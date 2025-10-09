@@ -19,22 +19,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import uuid
 from typing import Any, Awaitable, Callable, Dict, Optional, Annotated, Union, Type
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, ValidationError
-
-# pydantic v1/v2 union parsing compatibility
-try:
-    from pydantic import TypeAdapter  # v2
-    _HAS_V2 = True
-except Exception:  # pragma: no cover
-    _HAS_V2 = False
-    from pydantic.tools import parse_obj_as  # v1
-
+from fastapi import APIRouter, WebSocket
+from pydantic import BaseModel, Field, ValidationError, TypeAdapter
 from typing_extensions import Literal  # works on 3.8+ and with pydantic v1/v2
+from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from agents import trace
 from app.services.agent_as_tools.service import AgentService
@@ -45,6 +38,8 @@ logger = logging.getLogger("websocket_endpoint")
 # ---------------------------------------------------------------------------
 # Protocol models (discriminated by the 'type' field)
 # ---------------------------------------------------------------------------
+
+# Incoming (client -> server)
 
 class CreateSessionRequest(BaseModel):
     type: Literal["CreateSessionRequest"]
@@ -86,10 +81,65 @@ Incoming = Annotated[
 
 def parse_incoming(payload: dict) -> BaseModel:
     """Validate and coerce an incoming payload into the right message model."""
-    if _HAS_V2:
-        return TypeAdapter(Incoming).validate_python(payload)  # type: ignore[arg-type]
-    # pydantic v1 path
-    return parse_obj_as(Incoming, payload)  # type: ignore[no-any-return]
+    return TypeAdapter(Incoming).validate_python(payload)  # type: ignore[arg-type]
+
+
+# Outgoing (server -> client)
+
+class CreateSessionResponse(BaseModel):
+    type: Literal["CreateSessionResponse"]
+    sessionId: str
+
+
+class HeartBeatResponse(BaseModel):
+    type: Literal["HeartBeatResponse"]
+
+
+class ErrorResponse(BaseModel):
+    type: Literal["Error"]
+    error: str
+
+
+class ChatStreamResponseEvent(BaseModel):
+    type: Literal["ChatStreamResponseEvent"]
+    delta: Any
+
+
+class ChatStreamResponseComplete(BaseModel):
+    type: Literal["ChatStreamResponseComplete"]
+
+
+Outgoing = Annotated[
+    Union[
+        CreateSessionResponse,
+        HeartBeatResponse,
+        ErrorResponse,
+        ChatStreamResponseEvent,
+        ChatStreamResponseComplete,
+    ],
+    Field(discriminator="type"),
+]
+
+OutgoingAdapter = TypeAdapter(Outgoing)
+
+async def safe_send(ws: WebSocket, msg: BaseModel) -> None:
+    """Attempt to send; drop silently if the websocket is already closed."""
+    if ws.application_state is not WebSocketState.CONNECTED:
+        return
+    try:
+        await ws.send_json(msg.model_dump())
+    except (WebSocketDisconnect, RuntimeError):
+        # Socket is gone or ASGI already completed; ignore.
+        return
+    except Exception:
+        # Any other transport error — log once, then drop.
+        logger.exception("Failed to send frame (type=%s)", getattr(msg, "type", "Unknown"))
+
+async def send_outgoing(ws: WebSocket, msg: Outgoing) -> None:
+    """Consistently serialize and send a typed outbound message."""
+    # Validate against the union for extra safety before sending
+    _ = OutgoingAdapter.validate_python(msg.model_dump())
+    await safe_send(ws, msg)
 
 
 # ---------------------------------------------------------------------------
@@ -167,12 +217,12 @@ def handles(model: Type[BaseModel]):
 @handles(CreateSessionRequest)
 async def on_create_session(ws: WebSocket, sm: SessionManager, msg: CreateSessionRequest) -> None:
     sid = await sm.new_session()
-    await ws.send_json({"type": "CreateSessionResponse", "sessionId": sid})
+    await send_outgoing(ws, CreateSessionResponse(type="CreateSessionResponse", sessionId=sid))
 
 
 @handles(HeartBeatRequest)
 async def on_heartbeat(ws: WebSocket, _sm: SessionManager, msg: HeartBeatRequest) -> None:
-    await ws.send_json({"type": "HeartBeatResponse"})
+    await send_outgoing(ws, HeartBeatResponse(type="HeartBeatResponse"))
 
 
 @handles(OperatorSchemaResponse)
@@ -207,23 +257,27 @@ async def on_add_operator_response(ws: WebSocket, sm: SessionManager, msg: AddOp
 async def on_chat_user_message(ws: WebSocket, sm: SessionManager, msg: ChatUserMessageRequest) -> None:
     session = sm.get(msg.sessionId)
     if not session:
-        await ws.send_json({"type": "Error", "error": "Invalid sessionId"})
+        await send_outgoing(ws, ErrorResponse(type="Error", error="Invalid sessionId"))
         return
 
     text = (msg.message or "").strip()
     if not text:
-        await ws.send_json({"type": "Error", "error": "Empty chat message."})
+        await send_outgoing(ws, ErrorResponse(type="Error", error="Empty chat message."))
         return
 
     async def _stream() -> None:
         try:
             async for delta in session.service.stream_chat(ws, text):
-                await ws.send_json({"type": "ChatStreamResponseEvent", "delta": delta})
+                await send_outgoing(ws, ChatStreamResponseEvent(type="ChatStreamResponseEvent", delta=delta))
+        except WebSocketDisconnect:
+            # client left — stop quietly
+            return
         except Exception as e:
             logger.exception("stream_chat failed (sid=%s): %s", msg.sessionId, e)
-            await ws.send_json({"type": "Error", "error": "Streaming failed"})
+            await send_outgoing(ws, ErrorResponse(type="Error", error="Streaming failed"))
         finally:
-            await ws.send_json({"type": "ChatStreamResponseComplete"})
+            # safe even if disconnected
+            await send_outgoing(ws, ChatStreamResponseComplete(type="ChatStreamResponseComplete"))
 
     task = asyncio.create_task(_stream(), name=f"chat-stream:{msg.sessionId}")
     session.add_task(task)
@@ -241,31 +295,45 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
     try:
         while True:
+            # Receive a frame; separate disconnect vs JSON parse errors clearly
             try:
-                payload = await ws.receive_json()
+                text = await ws.receive_text()
+            except WebSocketDisconnect as e:
+                logger.info("WS disconnected (%s)", getattr(e, "code", "unknown"))
+                break
             except Exception as e:
+                # Transport-level receive error — treat as fatal
+                logger.exception("Receive error: %s", e)
+                break
+
+            # Parse JSON
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError as e:
                 logger.warning("Bad JSON frame: %s", e)
-                await ws.send_json({"type": "Error", "error": "Invalid JSON payload"})
+                await send_outgoing(ws, ErrorResponse(type="Error", error="Invalid JSON payload"))
                 continue
 
+            # Validate & dispatch
             try:
                 msg = parse_incoming(payload)
             except ValidationError as ve:
-                await ws.send_json({"type": "Error", "error": f"Bad payload: {ve.errors()}"})
+                await send_outgoing(ws, ErrorResponse(type="Error", error=f"Bad payload: {ve.errors()}"))
                 continue
 
             handler = _HANDLERS.get(type(msg))
             if not handler:
                 # Shouldn't happen if all models have handlers
-                await ws.send_json({"type": "Error", "error": f"Unhandled message type {getattr(msg, 'type', 'Unknown')}"})
+                await send_outgoing(ws, ErrorResponse(type="Error", error=f"Unhandled message type {getattr(msg, 'type', 'Unknown')}"))
                 continue
 
             try:
                 await handler(ws, sm, msg)
+            except WebSocketDisconnect:
+                logger.info("Client disconnected during handler")
+                break
             except Exception:
                 logger.exception("Handler failed for message: %s", getattr(msg, "type", "Unknown"))
-                await ws.send_json({"type": "Error", "error": "Internal error"})
-    except WebSocketDisconnect:
-        logger.info("WS disconnected")
+                await send_outgoing(ws, ErrorResponse(type="Error", error="Internal error"))
     finally:
         await sm.close_all()
