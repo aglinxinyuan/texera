@@ -21,9 +21,9 @@ from typing import Callable
 from agents import Agent, OpenAIResponsesModel, ModelSettings
 from openai import AsyncOpenAI
 
-from app.services.agent_as_tools.texera_bot.prompt_loader import load_prompt
-from app.services.agent_as_tools.texera_bot.util_tools import gen_uuid
-from app.services.agent_as_tools.texera_bot.settings import Settings
+from app.texera_bot.prompt_loader import load_prompt
+from app.texera_bot.util_tools import gen_uuid
+from app.texera_bot.settings import Settings
 
 
 PLANNER_SYS = load_prompt("planner_sys")

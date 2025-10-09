@@ -10,9 +10,9 @@ from openai.types.responses import ResponseTextDeltaEvent, ResponseCompletedEven
 from starlette.websockets import WebSocket
 
 from agents import trace
-from app.services.agent_as_tools.texera_bot.agent_factory import AgentFactory
-from app.services.agent_as_tools.texera_bot.settings import Settings
-from app.services.agent_as_tools.texera_bot.tool_registry import ToolRegistry
+from app.texera_bot.agent_factory import AgentFactory
+from app.texera_bot.settings import Settings
+from app.texera_bot.tool_registry import ToolRegistry
 
 settings = Settings()
 logger = logging.getLogger(__name__)

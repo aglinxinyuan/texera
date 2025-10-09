@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field, ValidationError, TypeAdapter
 from typing_extensions import Literal
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from app.services.agent_as_tools.agent_session import AgentSession
+from runtime.agent_session import AgentSession
 
 router = APIRouter()
 logger = logging.getLogger("websocket_endpoint")
