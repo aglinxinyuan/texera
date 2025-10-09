@@ -1,58 +1,52 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-
+# Licensed to the Apache Software Foundation (ASF) ...
 import asyncio
 import logging
-from typing import Any, Dict, List, AsyncGenerator  # add Callable
+import uuid
+from typing import Any, Dict, List, AsyncGenerator
 
 from agents import Agent, Runner, OpenAIResponsesModel, Model, AsyncOpenAI
 from agents.extensions.visualization import draw_graph
 from openai.types.responses import ResponseTextDeltaEvent, ResponseCompletedEvent
 from starlette.websockets import WebSocket
 
+from agents import trace  # tracing is owned here now
 from app.services.agent_as_tools.texera_bot.agent_factory import AgentFactory
 from app.services.agent_as_tools.texera_bot.settings import Settings
 from app.services.agent_as_tools.texera_bot.tool_registry import ToolRegistry
 
 settings = Settings()
-
 logger = logging.getLogger(__name__)
 
 
-class AgentService:
+class AgentSession:
+    """
+    Manages the lifetime, context, and agent graph for a single chat session.
+    Owns its session_id and tracing lifecycle. Exposes resolvers so the WS layer
+    never touches internals.
+    """
+
     def __init__(
-        self,
-        model: str | Model = OpenAIResponsesModel(
-            model="gpt-4o-mini", openai_client=AsyncOpenAI()
-        ),
-        session_id: str | None = None,
-        rid_registry: Dict[str, str] | None = None,
-        trace_cm=None,
+            self,
+            model: str | Model = OpenAIResponsesModel(
+                model="gpt-4o-mini", openai_client=AsyncOpenAI()
+            ),
     ):
         self.model = model
-        self.session_id = session_id
-        self.rid_registry = rid_registry
-        self._trace_cm = trace_cm
+        # ID & trace are owned here
+        self.session_id: str = str(uuid.uuid4())
+        self._trace_cm = trace(f"Texera Workflow Builder [{self.session_id}]")
+        self._trace_cm.__enter__()  # open span
+
+        # Internal coordination state
         self._schema_futures: Dict[str, asyncio.Future] = {}
         self._add_op_futures: Dict[str, asyncio.Future] = {}
         self._context: List[Dict[str, Any]] = []
         self._current_dag: List[Any] = []
 
+    # ---- lifecycle ----------------------------------------------------------
+
     def close(self):
+        """Close tracing and any other held resources."""
         if self._trace_cm:
             self._trace_cm.__exit__(None, None, None)
 
@@ -60,12 +54,13 @@ class AgentService:
     def context(self) -> List[Dict[str, Any]]:
         return self._context
 
-    # ─────────────────────────────────────────────────────────────
-    # NEW – construct the sub-agents and the manager
-    # ─────────────────────────────────────────────────────────────
+    # ---- agent construction -------------------------------------------------
+
     def _make_agents(self, websocket: WebSocket) -> Agent:
+        # ToolRegistry needs the websocket to send tool-related requests;
+        # we keep that dependency internal to the session layer.
         registry = ToolRegistry(
-            self,  # NEW  (parent_service)
+            self,  # parent session for callbacks
             websocket,
             self._schema_futures,
             self._add_op_futures,
@@ -83,11 +78,26 @@ class AgentService:
         )
         return factory.build()
 
-    # ─────────────────────────────────────────────────────────────
-    # Streaming chat entry-point
-    # ─────────────────────────────────────────────────────────────
+    # ---- resolvers for WS messages -----------------------------------------
+
+    def resolve_schema(self, request_id: str, schema: Any | None) -> bool:
+        fut = self._schema_futures.get(request_id)
+        if fut and not fut.done():
+            fut.set_result(schema)
+            return True
+        return False
+
+    def resolve_add_operator(self, request_id: str, status: str | None) -> bool:
+        fut = self._add_op_futures.get(request_id)
+        if fut and not fut.done():
+            fut.set_result(status)
+            return True
+        return False
+
+    # ---- streaming chat -----------------------------------------------------
+
     async def stream_chat(
-        self, websocket: WebSocket, user_message: str
+            self, websocket: WebSocket, user_message: str
     ) -> AsyncGenerator[str, None]:
         manager = self._make_agents(websocket)
         conversation = self._context + [{"role": "user", "content": user_message}]
@@ -103,9 +113,10 @@ class AgentService:
                 if isinstance(evt.data, ResponseTextDeltaEvent):
                     yield evt.data.delta
                 elif isinstance(evt.data, ResponseCompletedEvent):
-                    # update shared context and exit
+                    # persist context at completion boundaries
                     self._context = result.to_input_list()
                 else:
                     pass
+
         if result.is_complete and result.final_output:
             self._context = result.to_input_list()

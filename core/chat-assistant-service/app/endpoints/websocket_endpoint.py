@@ -21,16 +21,14 @@ import asyncio
 import contextlib
 import json
 import logging
-import uuid
 from typing import Any, Awaitable, Callable, Dict, Optional, Annotated, Union, Type
 
 from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel, Field, ValidationError, TypeAdapter
-from typing_extensions import Literal  # works on 3.8+ and with pydantic v1/v2
+from typing_extensions import Literal
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from agents import trace
-from app.services.agent_as_tools.service import AgentService
+from app.services.agent_as_tools.agent_session import AgentSession
 
 router = APIRouter()
 logger = logging.getLogger("websocket_endpoint")
@@ -40,7 +38,6 @@ logger = logging.getLogger("websocket_endpoint")
 # ---------------------------------------------------------------------------
 
 # Incoming (client -> server)
-
 class CreateSessionRequest(BaseModel):
     type: Literal["CreateSessionRequest"]
 
@@ -78,14 +75,11 @@ Incoming = Annotated[
     Field(discriminator="type"),
 ]
 
-
 def parse_incoming(payload: dict) -> BaseModel:
-    """Validate and coerce an incoming payload into the right message model."""
     return TypeAdapter(Incoming).validate_python(payload)  # type: ignore[arg-type]
 
 
 # Outgoing (server -> client)
-
 class CreateSessionResponse(BaseModel):
     type: Literal["CreateSessionResponse"]
     sessionId: str
@@ -119,8 +113,8 @@ Outgoing = Annotated[
     ],
     Field(discriminator="type"),
 ]
-
 OutgoingAdapter = TypeAdapter(Outgoing)
+
 
 async def safe_send(ws: WebSocket, msg: BaseModel) -> None:
     """Attempt to send; drop silently if the websocket is already closed."""
@@ -129,73 +123,70 @@ async def safe_send(ws: WebSocket, msg: BaseModel) -> None:
     try:
         await ws.send_json(msg.model_dump())
     except (WebSocketDisconnect, RuntimeError):
-        # Socket is gone or ASGI already completed; ignore.
         return
     except Exception:
-        # Any other transport error — log once, then drop.
         logger.exception("Failed to send frame (type=%s)", getattr(msg, "type", "Unknown"))
 
 async def send_outgoing(ws: WebSocket, msg: Outgoing) -> None:
-    """Consistently serialize and send a typed outbound message."""
-    # Validate against the union for extra safety before sending
+    """Validate and send a typed outbound message safely."""
     _ = OutgoingAdapter.validate_python(msg.model_dump())
     await safe_send(ws, msg)
 
 
 # ---------------------------------------------------------------------------
-# Session management
+# Session management (singleton per connection)
 # ---------------------------------------------------------------------------
 
-class Session:
-    """Holds per-session resources and background tasks."""
-    def __init__(self, service: AgentService, exit_span: Callable):
-        self.service = service
-        self._exit_span = exit_span
+class SessionManager:
+    """
+    Per-connection singleton that holds exactly one active AgentSession
+    and tracks background tasks. Creating a new session replaces the old one.
+    Note: AgentSession is responsible for its own session_id and tracing.
+    """
+    def __init__(self) -> None:
+        self.session: Optional[AgentSession] = None
         self._tasks: set[asyncio.Task] = set()
+
+    @property
+    def current_sid(self) -> Optional[str]:
+        return self.session.session_id if self.session else None
 
     def add_task(self, task: asyncio.Task) -> None:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def close(self) -> None:
-        # Cancel all background tasks
+    def get(self, sid: str) -> Optional[AgentSession]:
+        if not self.session or sid != self.session.session_id:
+            return None
+        return self.session
+
+    async def _cancel_tasks(self) -> None:
         for t in list(self._tasks):
             t.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await asyncio.gather(*self._tasks, return_exceptions=True)
-
-        # Close AgentService (sync close to keep compatibility)
-        with contextlib.suppress(Exception):
-            if hasattr(self.service, "close"):
-                self.service.close()
-
-        # Close span (no exception propagation)
-        with contextlib.suppress(Exception):
-            self._exit_span(None, None, None)
-
-
-class SessionManager:
-    """Encapsulates the per-connection maps and lifecycle helpers."""
-    def __init__(self) -> None:
-        self.sessions: Dict[str, Session] = {}
-        self.rid_to_session: Dict[str, str] = {}
-
-    def get(self, sid: str) -> Optional[Session]:
-        return self.sessions.get(sid)
+        self._tasks.clear()
 
     async def new_session(self) -> str:
-        sid = str(uuid.uuid4())
-        # Keep one OpenTelemetry span open for the session lifetime
-        cm = trace(f"Texera Workflow Builder [{sid}]")
-        cm.__enter__()  # open
-        service = AgentService(session_id=sid, rid_registry=self.rid_to_session, trace_cm=cm)
-        self.sessions[sid] = Session(service=service, exit_span=cm.__exit__)
-        return sid
+        """
+        Replace any existing AgentSession with a new one. AgentSession generates
+        its own ID and opens its own trace.
+        """
+        await self._cancel_tasks()
+        if self.session is not None:
+            with contextlib.suppress(Exception):
+                self.session.close()
+
+        self.session = AgentSession()          # <-- no params; owns id/trace
+        return self.session.session_id
 
     async def close_all(self) -> None:
-        await asyncio.gather(*(s.close() for s in self.sessions.values()), return_exceptions=True)
-        self.sessions.clear()
-        self.rid_to_session.clear()
+        """Close everything on connection shutdown."""
+        await self._cancel_tasks()
+        if self.session is not None:
+            with contextlib.suppress(Exception):
+                self.session.close()
+        self.session = None
 
 
 # ---------------------------------------------------------------------------
@@ -205,9 +196,7 @@ class SessionManager:
 Handler = Callable[[WebSocket, SessionManager, BaseModel], Awaitable[None]]
 _HANDLERS: Dict[Type[BaseModel], Handler] = {}
 
-
 def handles(model: Type[BaseModel]):
-    """Decorator to register a handler for a given message model class."""
     def deco(fn: Handler) -> Handler:
         _HANDLERS[model] = fn
         return fn
@@ -227,30 +216,24 @@ async def on_heartbeat(ws: WebSocket, _sm: SessionManager, msg: HeartBeatRequest
 
 @handles(OperatorSchemaResponse)
 async def on_operator_schema_response(ws: WebSocket, sm: SessionManager, msg: OperatorSchemaResponse) -> None:
-    rid = msg.requestId
-    sid = sm.rid_to_session.pop(rid, None)
+    sid = sm.current_sid
     if not sid:
         return
     session = sm.get(sid)
     if not session:
         return
-    fut = session.service._schema_futures.get(rid)
-    if fut and not fut.done():
-        fut.set_result(msg.schema)
+    session.resolve_schema(msg.requestId, msg.schema)  # clean API, no privates
 
 
 @handles(AddOperatorAndLinksResponse)
 async def on_add_operator_response(ws: WebSocket, sm: SessionManager, msg: AddOperatorAndLinksResponse) -> None:
-    rid = msg.requestId
-    sid = sm.rid_to_session.pop(rid, None)
+    sid = sm.current_sid
     if not sid:
         return
     session = sm.get(sid)
     if not session:
         return
-    fut = session.service._add_op_futures.get(rid)
-    if fut and not fut.done():
-        fut.set_result(msg.status)
+    session.resolve_add_operator(msg.requestId, msg.status)  # clean API
 
 
 @handles(ChatUserMessageRequest)
@@ -267,20 +250,17 @@ async def on_chat_user_message(ws: WebSocket, sm: SessionManager, msg: ChatUserM
 
     async def _stream() -> None:
         try:
-            async for delta in session.service.stream_chat(ws, text):
+            async for delta in session.stream_chat(ws, text):
                 await send_outgoing(ws, ChatStreamResponseEvent(type="ChatStreamResponseEvent", delta=delta))
         except WebSocketDisconnect:
-            # client left — stop quietly
             return
         except Exception as e:
             logger.exception("stream_chat failed (sid=%s): %s", msg.sessionId, e)
             await send_outgoing(ws, ErrorResponse(type="Error", error="Streaming failed"))
         finally:
-            # safe even if disconnected
             await send_outgoing(ws, ChatStreamResponseComplete(type="ChatStreamResponseComplete"))
 
-    task = asyncio.create_task(_stream(), name=f"chat-stream:{msg.sessionId}")
-    session.add_task(task)
+    sm.add_task(asyncio.create_task(_stream(), name=f"chat-stream:{msg.sessionId}"))
 
 
 # ---------------------------------------------------------------------------
@@ -295,14 +275,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
     try:
         while True:
-            # Receive a frame; separate disconnect vs JSON parse errors clearly
             try:
                 text = await ws.receive_text()
             except WebSocketDisconnect as e:
                 logger.info("WS disconnected (%s)", getattr(e, "code", "unknown"))
                 break
             except Exception as e:
-                # Transport-level receive error — treat as fatal
                 logger.exception("Receive error: %s", e)
                 break
 
@@ -323,7 +301,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
             handler = _HANDLERS.get(type(msg))
             if not handler:
-                # Shouldn't happen if all models have handlers
                 await send_outgoing(ws, ErrorResponse(type="Error", error=f"Unhandled message type {getattr(msg, 'type', 'Unknown')}"))
                 continue
 

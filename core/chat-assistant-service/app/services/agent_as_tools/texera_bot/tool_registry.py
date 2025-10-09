@@ -51,8 +51,6 @@ class ToolRegistry:
             request_id = str(uuid.uuid4())
             fut = asyncio.get_event_loop().create_future()
             self._schema_futs[request_id] = fut
-            if self.service.session_id:
-                self.service.rid_registry[request_id] = self.service.session_id
 
             await self.websocket.send_json(
                 {
@@ -78,8 +76,6 @@ class ToolRegistry:
             self._add_op_futs[request_id] = fut
             op_payload = operator_and_position.dict()
             links_payload = [link.dict() for link in links]
-            if self.service.session_id:
-                self.service.rid_registry[request_id] = self.service.session_id
 
             await self.websocket.send_json(
                 {
