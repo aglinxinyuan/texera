@@ -34,6 +34,7 @@ from messaging.handlers import HANDLERS
 router = APIRouter()
 logger = logging.getLogger("websocket_endpoint")
 
+
 @router.websocket("/chat-assistant")
 async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
@@ -56,19 +57,31 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 payload = json.loads(text)
             except json.JSONDecodeError as e:
                 logger.warning("Bad JSON frame: %s", e)
-                await send_outgoing(ws, ErrorResponse(type="Error", error="Invalid JSON payload"))
+                await send_outgoing(
+                    ws, ErrorResponse(type="Error", error="Invalid JSON payload")
+                )
                 continue
 
             # Validate & dispatch
             try:
                 msg = parse_incoming(payload)
             except ValidationError as ve:
-                await send_outgoing(ws, ErrorResponse(type="Error", error=f"Bad payload: {ve.errors()}"))
+                await send_outgoing(
+                    ws, ErrorResponse(type="Error", error=f"Bad payload: {ve.errors()}")
+                )
                 continue
 
             handler = HANDLERS.get(type(msg))
             if not handler:
-                await send_outgoing(ws, ErrorResponse(type="Error", error=f"Unhandled message type {getattr(msg, 'type', 'Unknown')}"))
+                await send_outgoing(
+                    ws,
+                    ErrorResponse(
+                        type="Error",
+                        error=(
+                            f"Unhandled message type {getattr(msg, 'type', 'Unknown')}"
+                        ),
+                    ),
+                )
                 continue
 
             try:
@@ -77,7 +90,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 logger.info("Client disconnected during handler")
                 break
             except Exception:
-                logger.exception("Handler failed for message: %s", getattr(msg, "type", "Unknown"))
-                await send_outgoing(ws, ErrorResponse(type="Error", error="Internal error"))
+                logger.exception(
+                    "Handler failed for message: %s", getattr(msg, "type", "Unknown")
+                )
+                await send_outgoing(
+                    ws, ErrorResponse(type="Error", error="Internal error")
+                )
     finally:
         await sm.close_all()

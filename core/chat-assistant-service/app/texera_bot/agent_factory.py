@@ -25,7 +25,6 @@ from .prompt_loader import load_prompt
 from .util_tools import gen_uuid
 from .settings import Settings
 
-
 PLANNER_SYS = load_prompt("planner_sys")
 BUILDER_SYS = load_prompt("builder_sys")
 MANAGER_SYS = load_prompt("manager_sys")
@@ -104,7 +103,7 @@ class AgentFactory:
                     ),
                 ),
                 self.add_ops,
-                self.get_current_dag
+                self.get_current_dag,
             ],
             model_settings=ModelSettings(
                 temperature=self.settings.temperature, top_p=self.settings.top_p

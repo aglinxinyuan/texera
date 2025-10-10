@@ -17,6 +17,7 @@
 
 from importlib.resources import files
 
+
 def load_prompt(name: str) -> str:
     """
     Read a Markdown prompt from texera_bot/prompts/{name}.md

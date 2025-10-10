@@ -25,6 +25,7 @@ from .protocol import Outgoing, OutgoingAdapter
 
 logger = logging.getLogger("websocket_endpoint")
 
+
 async def safe_send(ws: WebSocket, msg: BaseModel) -> None:
     """Attempt to send; drop silently if the websocket is already closed."""
     if ws.application_state is not WebSocketState.CONNECTED:
@@ -34,7 +35,10 @@ async def safe_send(ws: WebSocket, msg: BaseModel) -> None:
     except (WebSocketDisconnect, RuntimeError):
         return
     except Exception:
-        logger.exception("Failed to send frame (type=%s)", getattr(msg, "type", "Unknown"))
+        logger.exception(
+            "Failed to send frame (type=%s)", getattr(msg, "type", "Unknown")
+        )
+
 
 async def send_outgoing(ws: WebSocket, msg: Outgoing) -> None:
     """Validate and send a typed outbound message safely."""

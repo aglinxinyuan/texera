@@ -25,26 +25,32 @@ from typing_extensions import Literal
 # Incoming (client -> server)
 # ----------------------------
 
+
 class CreateSessionRequest(BaseModel):
     type: Literal["CreateSessionRequest"]
 
+
 class HeartBeatRequest(BaseModel):
     type: Literal["HeartBeatRequest"]
+
 
 class OperatorSchemaResponse(BaseModel):
     type: Literal["OperatorSchemaResponse"]
     requestId: str
     schema: Any | None = None
 
+
 class AddOperatorAndLinksResponse(BaseModel):
     type: Literal["AddOperatorAndLinksResponse"]
     requestId: str
     status: str | None = None
 
+
 class ChatUserMessageRequest(BaseModel):
     type: Literal["ChatUserMessageRequest"]
     sessionId: str
     message: str
+
 
 Incoming = Annotated[
     Union[
@@ -58,30 +64,38 @@ Incoming = Annotated[
 ]
 IncomingAdapter = TypeAdapter(Incoming)
 
+
 def parse_incoming(payload: dict) -> BaseModel:
     return IncomingAdapter.validate_python(payload)  # type: ignore[arg-type]
+
 
 # ----------------------------
 # Outgoing (server -> client)
 # ----------------------------
 
+
 class CreateSessionResponse(BaseModel):
     type: Literal["CreateSessionResponse"]
     sessionId: str
 
+
 class HeartBeatResponse(BaseModel):
     type: Literal["HeartBeatResponse"]
+
 
 class ErrorResponse(BaseModel):
     type: Literal["Error"]
     error: str
 
+
 class ChatStreamResponseEvent(BaseModel):
     type: Literal["ChatStreamResponseEvent"]
     delta: Any
 
+
 class ChatStreamResponseComplete(BaseModel):
     type: Literal["ChatStreamResponseComplete"]
+
 
 Outgoing = Annotated[
     Union[

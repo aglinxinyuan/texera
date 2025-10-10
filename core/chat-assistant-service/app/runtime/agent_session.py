@@ -4,7 +4,14 @@ import logging
 import uuid
 from typing import Any, Dict, List, AsyncGenerator
 
-from agents import Agent, Runner, OpenAIResponsesModel, Model, AsyncOpenAI, SQLiteSession
+from agents import (
+    Agent,
+    Runner,
+    OpenAIResponsesModel,
+    Model,
+    AsyncOpenAI,
+    SQLiteSession,
+)
 from agents.extensions.visualization import draw_graph
 from openai.types.responses import ResponseTextDeltaEvent, ResponseCompletedEvent
 from starlette.websockets import WebSocket
@@ -25,12 +32,12 @@ class AgentSession:
     """
 
     def __init__(
-            self,
-            model: str | Model = OpenAIResponsesModel(
-                model="gpt-4o-mini", openai_client=AsyncOpenAI()
-            ),
-            # optionally allow persistence by passing a DB path later if you want:
-            # db_path: str | None = None,
+        self,
+        model: str | Model = OpenAIResponsesModel(
+            model="gpt-4o-mini", openai_client=AsyncOpenAI()
+        ),
+        # optionally allow persistence by passing a DB path later if you want:
+        # db_path: str | None = None,
     ):
         self.model = model
 
@@ -106,7 +113,7 @@ class AgentSession:
     # ---- streaming chat (now using Sessions) --------------------------------
 
     async def stream_chat(
-            self, websocket: WebSocket, user_message: str
+        self, websocket: WebSocket, user_message: str
     ) -> AsyncGenerator[str, None]:
         agent = self._make_agents(websocket)
 

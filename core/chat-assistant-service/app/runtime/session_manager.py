@@ -6,11 +6,13 @@ from typing import Optional
 
 from .agent_session import AgentSession  # owns session_id & tracing
 
+
 class SessionManager:
     """
     Per-connection singleton that holds exactly one active AgentSession
     and tracks background tasks. Creating a new session replaces the old one.
     """
+
     def __init__(self) -> None:
         self.session: Optional[AgentSession] = None
         self._tasks: set[asyncio.Task] = set()
