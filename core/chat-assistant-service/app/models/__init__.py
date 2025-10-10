@@ -14,18 +14,3 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-from fastapi import FastAPI
-from endpoints.websocket_endpoint import router as websocket_router
-
-
-def create_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(websocket_router)
-
-    @app.get("/api/healthcheck", tags=["Health"])
-    async def healthcheck():
-        # Always return 200 with a tiny body (OK for k8s liveness probe)
-        return {"status": "ok"}
-
-    return app

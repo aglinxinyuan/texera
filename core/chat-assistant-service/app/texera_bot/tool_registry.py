@@ -23,7 +23,7 @@ from typing import Dict, List, Any
 from agents import function_tool
 from starlette.websockets import WebSocket
 
-from app.models.types import OperatorAndPosition, OperatorLink
+from models.types import OperatorAndPosition, OperatorLink
 
 logger = logging.getLogger(__name__)
 
