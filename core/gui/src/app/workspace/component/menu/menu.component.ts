@@ -32,7 +32,7 @@ import { WorkflowActionService } from "../../service/workflow-graph/model/workfl
 import { ExecutionState } from "../../types/execute-workflow.interface";
 import { WorkflowWebsocketService } from "../../service/workflow-websocket/workflow-websocket.service";
 import { WorkflowResultExportService } from "../../service/workflow-result-export/workflow-result-export.service";
-import { catchError, debounceTime, filter, mergeMap, tap, take } from "rxjs/operators";
+import { catchError, debounceTime, filter, mergeMap, tap } from "rxjs/operators";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { WorkflowUtilService } from "../../service/workflow-graph/util/workflow-util.service";
 import { WorkflowVersionService } from "../../../dashboard/service/user/workflow-version/workflow-version.service";
@@ -42,7 +42,7 @@ import { saveAs } from "file-saver";
 import { NotificationService } from "src/app/common/service/notification/notification.service";
 import { OperatorMenuService } from "../../service/operator-menu/operator-menu.service";
 import { CoeditorPresenceService } from "../../service/workflow-graph/model/coeditor-presence.service";
-import { firstValueFrom, of, Subscription, timer, interval, Subject } from "rxjs";
+import { firstValueFrom, of, Subscription, timer } from "rxjs";
 import { isDefined } from "../../../common/util/predicate";
 import { NzModalService } from "ng-zorro-antd/modal";
 import { ResultExportationComponent } from "../result-exportation/result-exportation.component";
@@ -54,6 +54,8 @@ import { ComputingUnitStatusService } from "../../service/computing-unit-status/
 import { ComputingUnitState } from "../../types/computing-unit-connection.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
 import { GuiConfigService } from "../../../common/service/gui-config.service";
+import { DashboardWorkflowComputingUnit } from "../../types/workflow-computing-unit";
+import { Privilege } from "../../../dashboard/type/share-access.interface";
 
 /**
  * MenuComponent is the top level menu bar that shows
@@ -110,6 +112,7 @@ export class MenuComponent implements OnInit, OnDestroy {
 
   // Computing unit status variables
   private computingUnitStatusSubscription: Subscription = new Subscription();
+  public selectedComputingUnit: DashboardWorkflowComputingUnit | null = null;
   public computingUnitStatus: ComputingUnitState = ComputingUnitState.NoComputingUnit;
 
   @ViewChild(ComputingUnitSelectionComponent) computingUnitSelectionComponent!: ComputingUnitSelectionComponent;
@@ -162,7 +165,8 @@ export class MenuComponent implements OnInit, OnDestroy {
     this.registerWorkflowModifiableChangedHandler();
     this.registerWorkflowIdUpdateHandler();
 
-    // Subscribe to computing unit status changes
+    // Subscribe to computing unit
+    this.subscribeToComputingUnitSelection();
     this.subscribeToComputingUnitStatus();
   }
 
@@ -200,6 +204,15 @@ export class MenuComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.workflowResultExportService.resetFlags();
     this.computingUnitStatusSubscription.unsubscribe();
+  }
+
+  private subscribeToComputingUnitSelection(): void {
+    this.computingUnitStatusService
+      .getSelectedComputingUnit()
+      .pipe(untilDestroyed(this))
+      .subscribe(unit => {
+        this.selectedComputingUnit = unit;
+      });
   }
 
   /**
@@ -717,7 +730,9 @@ export class MenuComponent implements OnInit, OnDestroy {
     // Regular workflow execution - already connected
     this.executeWorkflowService.executeWorkflowWithEmailNotification(
       this.currentExecutionName || "Untitled Execution",
-      this.config.env.workflowEmailNotificationEnabled && this.config.env.userSystemEnabled
+      this.config.env.workflowEmailNotificationEnabled
     );
   }
+
+  protected readonly Privilege = Privilege;
 }

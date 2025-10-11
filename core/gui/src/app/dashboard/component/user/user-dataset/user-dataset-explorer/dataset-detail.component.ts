@@ -38,7 +38,6 @@ import { ActionType, EntityType, HubService, LikedStatus } from "../../../../../
 import { FileUploadItem } from "../../../../type/dashboard-file.interface";
 import { DatasetStagedObject } from "../../../../../common/type/dataset-staged-object";
 import { NzModalService } from "ng-zorro-antd/modal";
-import { UserDatasetVersionCreatorComponent } from "./user-dataset-version-creator/user-dataset-version-creator.component";
 import { AdminSettingsService } from "../../../../service/admin/settings/admin-settings.service";
 import { HttpErrorResponse } from "@angular/common/http";
 import { Subscription } from "rxjs";
@@ -61,6 +60,7 @@ export class DatasetDetailComponent implements OnInit {
   public datasetIsPublic: boolean = false;
   public datasetIsDownloadable: boolean = true;
   public userDatasetAccessLevel: "READ" | "WRITE" | "NONE" = "NONE";
+  public ownerEmail: string = "";
   public isOwner: boolean = false;
 
   public currentDisplayedFileName: string = "";
@@ -276,6 +276,7 @@ export class DatasetDetailComponent implements OnInit {
           this.userDatasetAccessLevel = dashboardDataset.accessPrivilege;
           this.datasetIsPublic = dataset.isPublic;
           this.datasetIsDownloadable = dataset.isDownloadable;
+          this.ownerEmail = dashboardDataset.ownerEmail;
           this.isOwner = dashboardDataset.isOwner;
           if (typeof dataset.creationTime === "number") {
             const date = new Date(dataset.creationTime);
@@ -421,6 +422,7 @@ export class DatasetDetailComponent implements OnInit {
           // Start multipart upload
           const subscription = this.datasetService
             .multipartUpload(
+              this.ownerEmail,
               this.datasetName,
               file.name,
               file.file,
@@ -490,17 +492,13 @@ export class DatasetDetailComponent implements OnInit {
     }
   }
 
-  private cancelExistingUpload(fileName: string): void {
-    const isUploading = this.uploadTasks.some(
-      t => t.filePath === fileName && (t.status === "uploading" || t.status === "initializing")
-    );
-    this.uploadSubscriptions.get(fileName)?.unsubscribe();
-    this.uploadSubscriptions.delete(fileName);
-    this.uploadTasks = this.uploadTasks.filter(t => t.filePath !== fileName);
-
-    // Process next in queue if this was active
-    if (isUploading) {
-      this.onUploadComplete();
+  cancelExistingUpload(fileName: string): void {
+    const task = this.uploadTasks.find(t => t.filePath === fileName);
+    if (task) {
+      if (task.status === "uploading" || task.status === "initializing") {
+        this.onClickAbortUploadProgress(task);
+        return;
+      }
     }
     // Remove from pending queue if present
     this.pendingQueue = this.pendingQueue.filter(item => item.fileName !== fileName);
@@ -533,6 +531,10 @@ export class DatasetDetailComponent implements OnInit {
     return this.activeUploads;
   }
 
+  get hasAnyActivity(): boolean {
+    return this.pendingChangesCount > 0 || this.activeCount > 0 || this.queuedCount > 0;
+  }
+
   // Hide a task row after 5s
   private scheduleHide(idx: number) {
     if (idx === -1) {
@@ -558,6 +560,7 @@ export class DatasetDetailComponent implements OnInit {
 
     this.datasetService
       .finalizeMultipartUpload(
+        this.ownerEmail,
         this.datasetName,
         task.filePath,
         task.uploadId,

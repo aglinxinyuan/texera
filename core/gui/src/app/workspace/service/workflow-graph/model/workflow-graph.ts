@@ -19,6 +19,7 @@
 
 import { Observable, Subject } from "rxjs";
 import {
+  BreakpointInfo,
   Comment,
   CommentBox,
   LogicalPort,
@@ -27,7 +28,6 @@ import {
   PartitionInfo,
   PortDescription,
   PortProperty,
-  BreakpointInfo,
 } from "../../../types/workflow-common.interface";
 import { isEqual } from "lodash-es";
 import { SharedModel } from "./shared-model";
@@ -35,7 +35,6 @@ import { CoeditorState, User } from "../../../../common/type/user";
 import { createYTypeFromObject, updateYTypeFromObject, YType } from "../../../types/shared-editing.interface";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
-import { isDefined } from "../../../../common/util/predicate";
 
 // define the restricted methods that could change the graph
 type restrictedMethods =
@@ -1108,6 +1107,19 @@ export class WorkflowGraph {
     if (targetOperator.inputPorts.find(port => port.portID === link.target.portID) === undefined) {
       throw new Error(`link's target port ${link.target.portID} doesn't exist
           on input ports of the target operator ${link.target.operatorID}`);
+    }
+  }
+
+  /**
+   * Checks if a link is unique in the graph. Throws an error if more than one link with the same source and target
+   * as the given link exists.
+   */
+  public assertLinkNotDuplicated(link: OperatorLink): void {
+    const links = this.getAllLinks().filter(
+      value => isEqual(value.source, link.source) && isEqual(value.target, link.target)
+    );
+    if (links.length > 1) {
+      throw new Error(`duplicate link found with same source and target as link ${link}`);
     }
   }
 
