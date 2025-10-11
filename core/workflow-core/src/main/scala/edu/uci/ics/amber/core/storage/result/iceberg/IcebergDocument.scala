@@ -30,13 +30,7 @@ import org.apache.iceberg.data.Record
 import org.apache.iceberg.exceptions.NoSuchTableException
 import org.apache.iceberg.types.{Conversions, Types}
 
-import java.io.{
-  ByteArrayInputStream,
-  ByteArrayOutputStream,
-  InputStream,
-  PipedInputStream,
-  PipedOutputStream
-}
+import java.io.{ByteArrayInputStream, InputStream, PipedInputStream, PipedOutputStream}
 import java.net.URI
 import java.util.concurrent.locks.{ReentrantLock, ReentrantReadWriteLock}
 import scala.jdk.CollectionConverters._
@@ -452,7 +446,7 @@ private[storage] class IcebergDocument[T >: Null <: AnyRef](
   private def getParquetFileStream(fileTask: FileScanTask): InputStream = {
     val file = fileTask.file()
     val table = catalog.loadTable(TableIdentifier.of(tableNamespace, tableName))
-    table.io().newInputFile(file.path().toString).newStream()
+    table.io().newInputFile(file.location()).newStream()
   }
 
   /**

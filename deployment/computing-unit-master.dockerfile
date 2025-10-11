@@ -37,9 +37,9 @@ COPY .git ../.git
 RUN sbt clean WorkflowExecutionService/dist
 
 # Unzip the texera binary
-RUN unzip amber/target/universal/texera-0.1-SNAPSHOT.zip -d amber/target/
+RUN unzip amber/target/universal/texera-*.zip -d amber/target/
 
-FROM eclipse-temurin:11-jre-jammy AS runtime
+FROM eclipse-temurin:11-jdk-jammy AS runtime
 
 WORKDIR /core/amber
 
@@ -84,14 +84,21 @@ RUN curl -O https://cran.r-project.org/src/base/R-4/R-${R_VERSION}.tar.gz && \
     pip3 install -r /tmp/requirements.txt && \
     pip3 install -r /tmp/operator-requirements.txt && \
     pip3 install -r /tmp/r-requirements.txt
+# Install R packages, pinning arrow to 14.0.2.1 explicitly
 RUN Rscript -e "options(repos = c(CRAN = 'https://cran.r-project.org')); \
-                install.packages(c('coro', 'arrow', 'dplyr'), \
-                                 Ncpus = parallel::detectCores())"
+                install.packages(c('coro', 'dplyr'), \
+                                 Ncpus = parallel::detectCores())" && \
+    Rscript -e "options(repos = c(CRAN = 'https://cran.r-project.org')); \
+                if (!requireNamespace('remotes', quietly=TRUE)) \
+                  install.packages('remotes'); \
+                remotes::install_version('arrow', version='14.0.2.1', \
+                  repos='https://cran.r-project.org', upgrade='never'); \
+                cat('R arrow version: ', as.character(packageVersion('arrow')), '\n')"
 ENV LD_LIBRARY_PATH=/usr/local/lib/R/lib:$LD_LIBRARY_PATH
 
 # Copy the built texera binary from the build phase
 COPY --from=build /.git /.git
-COPY --from=build /core/amber/target/texera-0.1-SNAPSHOT /core/amber
+COPY --from=build /core/amber/target/texera-* /core/amber
 # Copy resources directories under /core from build phase
 COPY --from=build /core/config/src/main/resources /core/config/src/main/resources
 COPY --from=build /core/amber/src/main/resources /core/amber/src/main/resources
