@@ -155,3 +155,27 @@ jobs:
       - name: Test with pytest
         run: |
           cd amber/src/main/python && pytest -sv --ignore=core/models/test_RTableExecutor.py
+
+  chat_assistant_service:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        python-version: [ '3.12' ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Texera
+        uses: actions/checkout@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r chat-assistant-service/requirements.txt
+      - name: Lint with flake8 and black
+        run: |
+          cd chat-assistant-service && flake8 && black . --check
+      - name: Test with pytest
+        run: |
+          cd chat-assistant-service && pytest -sv
