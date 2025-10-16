@@ -27,7 +27,7 @@ def create_app() -> FastAPI:
     Create the ChatAssistantService application.
     """
 
-    app = FastAPI()
+    app = FastAPI(title="Texera Chat Assistant Service")
 
     @app.get("/api/healthcheck", tags=["Health"])
     async def healthcheck():
