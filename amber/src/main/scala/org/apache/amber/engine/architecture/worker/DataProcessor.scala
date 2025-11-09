@@ -24,36 +24,18 @@ import io.grpc.MethodDescriptor
 import org.apache.amber.core.executor.OperatorExecutor
 import org.apache.amber.core.state.State
 import org.apache.amber.core.tuple._
-import org.apache.amber.core.virtualidentity.{
-  ActorVirtualIdentity,
-  ChannelIdentity,
-  EmbeddedControlMessageIdentity
-}
+import org.apache.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity, EmbeddedControlMessageIdentity}
 import org.apache.amber.core.workflow.PortIdentity
 import org.apache.amber.engine.architecture.common.AmberProcessor
 import org.apache.amber.engine.architecture.logreplay.ReplayLogManager
-import org.apache.amber.engine.architecture.messaginglayer.{
-  InputManager,
-  OutputManager,
-  WorkerTimerService
-}
-import org.apache.amber.engine.architecture.rpc.controlcommands.EmbeddedControlMessageType.{
-  NO_ALIGNMENT,
-  PORT_ALIGNMENT
-}
+import org.apache.amber.engine.architecture.messaginglayer.{InputManager, OutputManager, WorkerTimerService}
+import org.apache.amber.engine.architecture.rpc.controlcommands.EmbeddedControlMessageType.{NO_ALIGNMENT, PORT_ALIGNMENT}
 import org.apache.amber.engine.architecture.rpc.controlcommands._
 import org.apache.amber.engine.architecture.rpc.controlreturns.EmptyReturn
-import org.apache.amber.engine.architecture.rpc.workerservice.WorkerServiceGrpc.METHOD_END_CHANNEL
-import org.apache.amber.engine.architecture.worker.WorkflowWorker.{
-  DPInputQueueElement,
-  MainThreadDelegateMessage
-}
+import org.apache.amber.engine.architecture.rpc.workerservice.WorkerServiceGrpc.{METHOD_END_CHANNEL, METHOD_END_ITERATION}
+import org.apache.amber.engine.architecture.worker.WorkflowWorker.{DPInputQueueElement, MainThreadDelegateMessage}
 import org.apache.amber.engine.architecture.worker.managers.SerializationManager
-import org.apache.amber.engine.architecture.worker.statistics.WorkerState.{
-  COMPLETED,
-  READY,
-  RUNNING
-}
+import org.apache.amber.engine.architecture.worker.statistics.WorkerState.{COMPLETED, READY, RUNNING}
 import org.apache.amber.engine.architecture.worker.statistics.WorkerStatistics
 import org.apache.amber.engine.common.ambermessage._
 import org.apache.amber.engine.common.statetransition.WorkerStateManager
@@ -157,7 +139,7 @@ class DataProcessor(
     if (outputTuple == null) return
     outputTuple match {
       case FinalizeExecutor() =>
-        sendECMToDataChannels(METHOD_END_CHANNEL, PORT_ALIGNMENT)
+        sendECMToDataChannels(METHOD_END_CHANNEL.getBareMethodName, PORT_ALIGNMENT)
         // Send Completed signal to worker actor.
         executor.close()
         adaptiveBatchingMonitor.stopAdaptiveBatching()
@@ -179,6 +161,13 @@ class DataProcessor(
           PortCompletedRequest(portId, input),
           asyncRPCClient.mkContext(CONTROLLER)
         )
+      case FinalizeIteration(worker: ActorVirtualIdentity) =>
+        sendECMToDataChannels(
+          METHOD_END_ITERATION.getBareMethodName,
+          PORT_ALIGNMENT,
+          EndIterationRequest(worker)
+        )
+        executor.reset()
       case schemaEnforceable: SchemaEnforceable =>
         val portIdentity = outputPortOpt.getOrElse(outputManager.getSingleOutputPortIdentity)
         val tuple = schemaEnforceable.enforceSchema(outputManager.getPort(portIdentity).schema)
@@ -264,23 +253,41 @@ class DataProcessor(
     }
   }
 
+  def processOnFinish(): Unit = {
+    val portId = inputGateway.getChannel(inputManager.currentChannelId).getPortId
+    try {
+      val outputState = executor.produceStateOnFinish(portId.id)
+      if (outputState.isDefined) {
+        outputManager.emitState(outputState.get)
+      }
+      outputManager.outputIterator.setTupleOutput(
+        executor.onFinishMultiPort(portId.id)
+      )
+    } catch safely {
+      case e =>
+        // forward input tuple to the user and pause DP thread
+        handleExecutorException(e)
+    }
+  }
+
   def sendECMToDataChannels(
-      method: MethodDescriptor[EmptyRequest, EmptyReturn],
-      alignment: EmbeddedControlMessageType
+      method: String,
+      alignment: EmbeddedControlMessageType,
+      request: ControlRequest = EmptyRequest()
   ): Unit = {
     outputManager.flush()
     outputGateway.getActiveChannels
       .filter(!_.isControl)
       .foreach { activeChannelId =>
         asyncRPCClient.sendECMToChannel(
-          EmbeddedControlMessageIdentity(method.getBareMethodName),
+          EmbeddedControlMessageIdentity(method),
           alignment,
           Set(),
           Map(
             activeChannelId.toWorkerId.name ->
               ControlInvocation(
-                method.getBareMethodName,
-                EmptyRequest(),
+                method,
+                request,
                 AsyncRPCContext(ActorVirtualIdentity(""), ActorVirtualIdentity("")),
                 -1
               )

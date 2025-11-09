@@ -20,42 +20,23 @@
 package org.apache.amber.engine.architecture.worker.promisehandlers
 
 import com.twitter.util.Future
-import org.apache.amber.core.tuple.FinalizePort
 import org.apache.amber.engine.architecture.rpc.controlcommands.{AsyncRPCContext, EmptyRequest}
 import org.apache.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 import org.apache.amber.engine.architecture.worker.DataProcessorRPCHandlerInitializer
-import org.apache.amber.error.ErrorUtils.safely
 import org.apache.amber.operator.loop.LoopStartOpExec
 
-trait EndChannelHandler {
+trait NextIterationHandler {
   this: DataProcessorRPCHandlerInitializer =>
 
-  override def endChannel(
-      request: EmptyRequest,
-      ctx: AsyncRPCContext
-  ): Future[EmptyReturn] = {
-    val channelId = dp.inputManager.currentChannelId
-    val portId = dp.inputGateway.getChannel(channelId).getPortId
-    dp.inputManager.getPort(portId).completed = true
-    dp.inputManager.initBatch(channelId, Array.empty)
+  override def nextIteration(
+                              request: EmptyRequest,
+                              ctx: AsyncRPCContext
+                            ): Future[EmptyReturn] = {
     dp.processOnFinish()
-
-    dp.outputManager.outputIterator.appendSpecialTupleToEnd(
-      FinalizePort(portId, input = true)
-    )
-
-    if (dp.inputManager.getAllPorts.forall(portId => dp.inputManager.isPortCompleted(portId))) {
-      // Need this check for handling input port dependency relationships.
-      // See documentation of isMissingOutputPort
-      if (!dp.outputManager.isMissingOutputPort) {
-        // assuming all the output ports finalize after all input ports are finalized.
-        dp.executor match {
-          case executor: LoopStartOpExec if executor.checkCondition() =>
-            dp.outputManager.finalizeIteration(dp.actorId)
-          case _ =>
-            dp.outputManager.finalizeOutput()
-        }
-      }
+    if (dp.executor.asInstanceOf[LoopStartOpExec].checkCondition()) {
+      dp.outputManager.finalizeIteration(dp.actorId)
+    } else {
+      dp.outputManager.finalizeOutput()
     }
     EmptyReturn()
   }
