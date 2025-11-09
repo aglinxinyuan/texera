@@ -19,6 +19,7 @@
 
 package org.apache.amber.core.tuple
 
+import org.apache.amber.core.virtualidentity.ActorVirtualIdentity
 import org.apache.amber.core.workflow.PortIdentity
 
 import scala.jdk.CollectionConverters.CollectionHasAsScala
@@ -41,6 +42,7 @@ trait InternalMarker extends TupleLike {
 
 final case class FinalizePort(portId: PortIdentity, input: Boolean) extends InternalMarker
 final case class FinalizeExecutor() extends InternalMarker
+final case class FinalizeIteration(worker: ActorVirtualIdentity) extends InternalMarker
 
 trait SeqTupleLike extends TupleLike with SchemaEnforceable {
   override def inMemSize: Long = ???

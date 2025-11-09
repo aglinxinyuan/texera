@@ -35,22 +35,15 @@ import org.apache.amber.operator.distinct.DistinctOpDesc
 import org.apache.amber.operator.dummy.DummyOpDesc
 import org.apache.amber.operator.filter.SpecializedFilterOpDesc
 import org.apache.amber.operator.hashJoin.HashJoinOpDesc
-import org.apache.amber.operator.huggingFace.{
-  HuggingFaceIrisLogisticRegressionOpDesc,
-  HuggingFaceSentimentAnalysisOpDesc,
-  HuggingFaceSpamSMSDetectionOpDesc,
-  HuggingFaceTextSummarizationOpDesc
-}
+import org.apache.amber.operator.huggingFace.{HuggingFaceIrisLogisticRegressionOpDesc, HuggingFaceSentimentAnalysisOpDesc, HuggingFaceSpamSMSDetectionOpDesc, HuggingFaceTextSummarizationOpDesc}
 import org.apache.amber.operator.ifStatement.IfOpDesc
 import org.apache.amber.operator.intersect.IntersectOpDesc
 import org.apache.amber.operator.intervalJoin.IntervalJoinOpDesc
 import org.apache.amber.operator.keywordSearch.KeywordSearchOpDesc
 import org.apache.amber.operator.limit.LimitOpDesc
+import org.apache.amber.operator.loop.{LoopEndOpDesc, LoopStartOpDesc}
 import org.apache.amber.operator.machineLearning.Scorer.MachineLearningScorerOpDesc
-import org.apache.amber.operator.machineLearning.sklearnAdvanced.KNNTrainer.{
-  SklearnAdvancedKNNClassifierTrainerOpDesc,
-  SklearnAdvancedKNNRegressorTrainerOpDesc
-}
+import org.apache.amber.operator.machineLearning.sklearnAdvanced.KNNTrainer.{SklearnAdvancedKNNClassifierTrainerOpDesc, SklearnAdvancedKNNRegressorTrainerOpDesc}
 import org.apache.amber.operator.machineLearning.sklearnAdvanced.SVCTrainer.SklearnAdvancedSVCTrainerOpDesc
 import org.apache.amber.operator.machineLearning.sklearnAdvanced.SVRTrainer.SklearnAdvancedSVRTrainerOpDesc
 import org.apache.amber.operator.metadata.{OPVersion, OperatorInfo, PropertyNameConstants}
@@ -64,10 +57,7 @@ import org.apache.amber.operator.sleep.SleepOpDesc
 import org.apache.amber.operator.sort.{SortOpDesc, StableMergeSortOpDesc}
 import org.apache.amber.operator.sortPartitions.SortPartitionsOpDesc
 import org.apache.amber.operator.source.apis.reddit.RedditSearchSourceOpDesc
-import org.apache.amber.operator.source.apis.twitter.v2.{
-  TwitterFullArchiveSearchSourceOpDesc,
-  TwitterSearchSourceOpDesc
-}
+import org.apache.amber.operator.source.apis.twitter.v2.{TwitterFullArchiveSearchSourceOpDesc, TwitterSearchSourceOpDesc}
 import org.apache.amber.operator.source.fetcher.URLFetcherOpDesc
 import org.apache.amber.operator.source.scan.FileScanSourceOpDesc
 import org.apache.amber.operator.source.scan.arrow.ArrowSourceOpDesc
@@ -195,6 +185,8 @@ trait StateTransferFunc
     new Type(value = classOf[TypeCastingOpDesc], name = "TypeCasting"),
     new Type(value = classOf[LimitOpDesc], name = "Limit"),
     new Type(value = classOf[SleepOpDesc], name = "Sleep"),
+    new Type(value = classOf[LoopStartOpDesc], name = "LoopStart"),
+    new Type(value = classOf[LoopEndOpDesc], name = "LoopEnd"),
     new Type(value = classOf[RandomKSamplingOpDesc], name = "RandomKSampling"),
     new Type(value = classOf[ReservoirSamplingOpDesc], name = "ReservoirSampling"),
     new Type(value = classOf[HashJoinOpDesc[String]], name = "HashJoin"),
