@@ -29,9 +29,9 @@ trait NextIterationHandler {
   this: DataProcessorRPCHandlerInitializer =>
 
   override def nextIteration(
-                              request: EmptyRequest,
-                              ctx: AsyncRPCContext
-                            ): Future[EmptyReturn] = {
+      request: EmptyRequest,
+      ctx: AsyncRPCContext
+  ): Future[EmptyReturn] = {
     dp.processOnFinish()
     if (dp.executor.asInstanceOf[LoopStartOpExec].checkCondition()) {
       dp.outputManager.finalizeIteration(dp.actorId)

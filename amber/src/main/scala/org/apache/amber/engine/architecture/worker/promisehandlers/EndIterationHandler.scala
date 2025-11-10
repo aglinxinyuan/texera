@@ -19,7 +19,11 @@
 
 package org.apache.amber.engine.architecture.worker.promisehandlers
 
-import org.apache.amber.engine.architecture.rpc.controlcommands.{AsyncRPCContext, EmptyRequest, EndIterationRequest}
+import org.apache.amber.engine.architecture.rpc.controlcommands.{
+  AsyncRPCContext,
+  EmptyRequest,
+  EndIterationRequest
+}
 import org.apache.amber.engine.architecture.worker.DataProcessorRPCHandlerInitializer
 import com.twitter.util.Future
 import org.apache.amber.engine.architecture.rpc.controlreturns.EmptyReturn
@@ -29,9 +33,9 @@ trait EndIterationHandler {
   this: DataProcessorRPCHandlerInitializer =>
 
   override def endIteration(
-                             request: EndIterationRequest,
-                             ctx: AsyncRPCContext
-                           ): Future[EmptyReturn] = {
+      request: EndIterationRequest,
+      ctx: AsyncRPCContext
+  ): Future[EmptyReturn] = {
     dp.executor match {
       case _: LoopEndOpExec =>
         workerInterface.nextIteration(EmptyRequest(), mkContext(request.worker))
