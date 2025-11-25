@@ -21,19 +21,15 @@ package org.apache.amber.engine.architecture.controller.promisehandlers
 
 import com.twitter.util.Future
 import org.apache.amber.core.WorkflowRuntimeException
+import org.apache.amber.core.storage.DocumentFactory
 import org.apache.amber.core.workflow.GlobalPortIdentity
-import org.apache.amber.engine.architecture.controller.{
-  ControllerAsyncRPCHandlerInitializer,
-  FatalError
-}
-import org.apache.amber.engine.architecture.rpc.controlcommands.{
-  AsyncRPCContext,
-  PortCompletedRequest,
-  QueryStatisticsRequest
-}
+import org.apache.amber.core.workflow.cache.FingerprintUtil
+import org.apache.amber.engine.architecture.controller.{ControllerAsyncRPCHandlerInitializer, FatalError}
+import org.apache.amber.engine.architecture.rpc.controlcommands.{AsyncRPCContext, PortCompletedRequest, QueryStatisticsRequest}
 import org.apache.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 import org.apache.amber.engine.common.virtualidentity.util.CONTROLLER
 import org.apache.amber.util.VirtualIdentityUtils
+import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowExecutionsResource
 
 /** Notify the completion of a port:
   * - For input port, it means the worker has finished consuming and processing all the data
@@ -74,6 +70,35 @@ trait PortCompletedHandler {
               else operatorExecution.isOutputPortCompleted(msg.portId)
 
             if (isPortCompleted) {
+              // If this is an output port and materialized, persist cache metadata.
+              if (!msg.input) {
+                val storageUriOpt =
+                  WorkflowExecutionsResource.getResultUriByPhysicalPortId(
+                    cp.workflowContext.executionId,
+                    globalPortId
+                  )
+                (storageUriOpt, Option(cp.workflowScheduler.physicalPlan)) match {
+                  case (Some(uri), Some(plan)) =>
+                    val fingerprint = FingerprintUtil.computeSubdagFingerprint(plan, globalPortId)
+                    val tupleCount =
+                      try {
+                        Some(DocumentFactory.openDocument(uri)._1.getCount)
+                      } catch {
+                        case _: Throwable => None
+                      }
+                    WorkflowExecutionsResource.upsertOperatorPortCache(
+                      cp.workflowContext.workflowId,
+                      globalPortId,
+                      fingerprint.subdagHash,
+                      fingerprint.fingerprintJson,
+                      uri,
+                      tupleCount,
+                      Some(cp.workflowContext.executionId)
+                    )
+                  case _ => // no-op if plan or URI is missing
+                }
+              }
+
               cp.workflowExecutionCoordinator
                 .coordinateRegionExecutors(cp.actorService)
                 // Since this message is sent from a worker, any exception from the above code will be returned to that worker.

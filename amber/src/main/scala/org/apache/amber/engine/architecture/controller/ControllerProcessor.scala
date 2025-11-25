@@ -34,7 +34,7 @@ import org.apache.amber.engine.architecture.worker.WorkflowWorker.MainThreadDele
 import org.apache.amber.engine.common.ambermessage.WorkflowFIFOMessage
 
 class ControllerProcessor(
-    workflowContext: WorkflowContext,
+    val workflowContext: WorkflowContext,
     controllerConfig: ControllerConfig,
     actorId: ActorVirtualIdentity,
     outputHandler: Either[MainThreadDelegateMessage, WorkflowFIFOMessage] => Unit
