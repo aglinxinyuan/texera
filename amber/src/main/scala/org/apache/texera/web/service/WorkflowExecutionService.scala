@@ -28,6 +28,9 @@ import org.apache.amber.engine.architecture.rpc.controlreturns.WorkflowAggregate
 import org.apache.amber.engine.common.Utils
 import org.apache.amber.engine.common.client.AmberClient
 import org.apache.amber.engine.common.executionruntimestate.ExecutionMetadataStore
+import org.apache.amber.core.workflow.cache.FingerprintUtil
+import org.apache.amber.core.workflow.{CachedOutput, GlobalPortIdentity}
+import org.apache.amber.util.serde.GlobalPortIdentitySerde.SerdeOps
 import org.apache.texera.web.model.websocket.event.{
   TexeraWebSocketEvent,
   WorkflowErrorEvent,
@@ -103,10 +106,30 @@ class WorkflowExecutionService(
   var executionRuntimeService: ExecutionRuntimeService = _
   var executionConsoleService: ExecutionConsoleService = _
 
+  private def computeCachedOutputs(
+      physicalPlan: org.apache.amber.core.workflow.PhysicalPlan
+  ): Map[String, CachedOutput] = {
+    physicalPlan.operators
+      .flatMap(op => op.outputPorts.keys.map(pid => GlobalPortIdentity(op.id, pid)))
+      .flatMap { gpid =>
+        val fingerprint = FingerprintUtil.computeSubdagFingerprint(physicalPlan, gpid)
+        WorkflowExecutionsResource
+          .getOperatorPortCache(workflowContext.workflowId, gpid, fingerprint.subdagHash)
+          .map {
+            case (uri, tupleCount, fpJson, sourceEid) =>
+              gpid.serializeAsString -> CachedOutput(uri, fpJson, tupleCount, sourceEid)
+          }
+      }
+      .toMap
+  }
+
   def executeWorkflow(): Unit = {
     try {
       workflow = new WorkflowCompiler(workflowContext)
         .compile(request.logicalPlan)
+      val cachedOutputs = computeCachedOutputs(workflow.physicalPlan)
+      workflowContext.workflowSettings =
+        workflowContext.workflowSettings.copy(cachedOutputs = cachedOutputs)
     } catch {
       case err: Throwable =>
         errorHandler(err)
