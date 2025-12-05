@@ -388,8 +388,8 @@ class CostBasedScheduleGenerator(
     */
   def bottomUpSearch(
       globalSearch: Boolean = false,
-      oChains: Boolean = true,
-      oCleanEdges: Boolean = true,
+      oChains: Boolean = false,
+      oCleanEdges: Boolean = false,
       oEarlyStop: Boolean = true
   ): SearchResult = {
     val startTime = System.nanoTime()
@@ -528,7 +528,7 @@ class CostBasedScheduleGenerator(
     */
   def topDownSearch(
       globalSearch: Boolean = false,
-      oChains: Boolean = true,
+      oChains: Boolean = false,
       oCleanEdges: Boolean = true
   ): SearchResult = {
     val startTime = System.nanoTime()
