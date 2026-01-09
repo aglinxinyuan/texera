@@ -28,9 +28,9 @@ import org.apache.texera.amber.engine.architecture.rpc.controlreturns.WorkflowAg
 import org.apache.texera.amber.engine.common.Utils
 import org.apache.texera.amber.engine.common.client.AmberClient
 import org.apache.texera.amber.engine.common.executionruntimestate.ExecutionMetadataStore
-import org.apache.amber.core.workflow.cache.FingerprintUtil
-import org.apache.amber.core.workflow.{CachedOutput, GlobalPortIdentity}
-import org.apache.amber.util.serde.GlobalPortIdentitySerde.SerdeOps
+import org.apache.texera.amber.core.workflow.cache.FingerprintUtil
+import org.apache.texera.amber.core.workflow.{CachedOutput, GlobalPortIdentity}
+import org.apache.texera.amber.util.serde.GlobalPortIdentitySerde.SerdeOps
 import org.apache.texera.web.model.websocket.event.{
   TexeraWebSocketEvent,
   WorkflowErrorEvent,
@@ -107,7 +107,7 @@ class WorkflowExecutionService(
   var executionConsoleService: ExecutionConsoleService = _
 
   private def computeCachedOutputs(
-      physicalPlan: org.apache.amber.core.workflow.PhysicalPlan
+      physicalPlan: org.apache.texera.amber.core.workflow.PhysicalPlan
   ): Map[String, CachedOutput] = {
     physicalPlan.operators
       .flatMap(op => op.outputPorts.keys.map(pid => GlobalPortIdentity(op.id, pid)))
