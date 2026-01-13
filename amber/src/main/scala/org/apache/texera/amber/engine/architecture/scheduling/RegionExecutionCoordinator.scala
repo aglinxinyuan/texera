@@ -29,12 +29,13 @@ import org.apache.texera.amber.engine.architecture.common.{AkkaActorRefMappingSe
 import org.apache.texera.amber.engine.architecture.controller.execution.{OperatorExecution, RegionExecution, WorkflowExecution}
 import org.apache.texera.amber.engine.architecture.controller.{ControllerConfig, ExecutionStateUpdate, ExecutionStatsUpdate, WorkerAssignmentUpdate}
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands._
-import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
-import org.apache.texera.amber.engine.architecture.scheduling.config.{InputPortConfig, OperatorConfig, OutputPortConfig, ResourceConfig, WorkerConfig}
+import org.apache.texera.amber.engine.architecture.rpc.controlreturns.{EmptyReturn, WorkflowAggregatedState}
+import org.apache.texera.amber.engine.architecture.scheduling.config.{InputPortConfig, OperatorConfig, OutputPortConfig, ResourceConfig}
 import org.apache.texera.amber.engine.architecture.sendsemantics.partitionings.Partitioning
-import org.apache.texera.amber.engine.architecture.worker.statistics.{PortTupleMetricsMapping, TupleMetrics, WorkerState, WorkerStatistics}
+import org.apache.texera.amber.engine.architecture.worker.statistics.{PortTupleMetricsMapping, TupleMetrics, WorkerState}
 import org.apache.texera.amber.engine.common.AmberLogging
 import org.apache.texera.amber.engine.common.FutureBijection._
+import org.apache.texera.amber.engine.common.executionruntimestate.{OperatorMetrics, OperatorStatistics}
 import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 import org.apache.texera.amber.engine.common.virtualidentity.util.CONTROLLER
 import org.apache.texera.web.SessionState
@@ -97,38 +98,34 @@ class RegionExecutionCoordinator(
     initRegionExecution()
   }
 
+  /**
+    * Short-circuit a cached region by recording operator metrics and output URIs without workers,
+    * then emit stats and mark the region as completed.
+    */
   private def completeCachedRegion(): Unit = {
     val regionExecution = workflowExecution.getRegionExecution(region.id)
     val resourceConfig = region.resourceConfig.getOrElse(ResourceConfig())
     region.getOperators.foreach { op =>
       val opExecution = regionExecution.initOperatorExecution(op.id)
-      val workerConfigs = resourceConfig.operatorConfigs
-        .get(op.id)
-        .map(_.workerConfigs)
-        .getOrElse(WorkerConfig.generateWorkerConfigs(op))
-      workerConfigs.foreach { workerCfg =>
-        val workerExecution = opExecution.initWorkerExecution(workerCfg.workerId)
-        op.inputPorts.keys.foreach(pid => workerExecution.getInputPortExecution(pid).setCompleted())
-        op.outputPorts.keys.foreach(pid => workerExecution.getOutputPortExecution(pid).setCompleted())
-        val outputMetrics = op.outputPorts.keys.map { pid =>
-          val count = resourceConfig.portConfigs.collectFirst {
-            case (gpid, cfg: OutputPortConfig) if gpid == GlobalPortIdentity(op.id, pid) =>
-              cfg.cachedTupleCount.getOrElse(0L)
-          }.getOrElse(0L)
-          PortTupleMetricsMapping(pid, TupleMetrics(count, 0L))
-        }.toSeq
-        val inputMetrics = op.inputPorts.keys
-          .map(pid => PortTupleMetricsMapping(pid, TupleMetrics(0L, 0L)))
-          .toSeq
-        val stats = WorkerStatistics(
+      // Cached regions do not create workers; synthesize operator-level metrics instead.
+      val outputMetrics = op.outputPorts.keys.map { pid =>
+        val count = resourceConfig.portConfigs.collectFirst {
+          case (gpid, cfg: OutputPortConfig) if gpid == GlobalPortIdentity(op.id, pid) =>
+            cfg.cachedTupleCount.getOrElse(0L)
+        }.getOrElse(0L)
+        PortTupleMetricsMapping(pid, TupleMetrics(count, 0L))
+      }.toSeq
+      val inputMetrics = op.inputPorts.keys
+        .map(pid => PortTupleMetricsMapping(pid, TupleMetrics(0L, 0L)))
+        .toSeq
+      val stats = OperatorMetrics(
+        WorkflowAggregatedState.COMPLETED,
+        OperatorStatistics(
           inputMetrics,
           outputMetrics,
-          dataProcessingTime = 0L,
-          controlProcessingTime = 0L,
-          idleTime = 0L
         )
-        workerExecution.update(System.nanoTime(), WorkerState.COMPLETED, stats)
-      }
+      )
+      opExecution.setCachedMetrics(stats)
     }
     recordCachedOutputPortResults(resourceConfig)
     asyncRPCClient.sendToClient(
@@ -362,6 +359,8 @@ class RegionExecutionCoordinator(
         else
           None
       )
+      // Ensure live execution does not inherit cached operator metrics.
+      operatorExecution.clearCachedMetrics()
 
       if (!existOpExecution) {
         buildOperator(
