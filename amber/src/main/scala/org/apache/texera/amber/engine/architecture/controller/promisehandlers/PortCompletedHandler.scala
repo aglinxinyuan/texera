@@ -23,8 +23,7 @@ import com.twitter.util.Future
 import org.apache.texera.amber.core.WorkflowRuntimeException
 import org.apache.texera.amber.core.storage.DocumentFactory
 import org.apache.texera.amber.core.workflow.GlobalPortIdentity
-import org.apache.texera.amber.core.workflow.cache.FingerprintUtil
-import org.apache.texera.amber.engine.architecture.controller.{ControllerAsyncRPCHandlerInitializer, FatalError}
+import org.apache.texera.amber.engine.architecture.controller.{ControllerAsyncRPCHandlerInitializer, FatalError, PortMaterialized}
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{AsyncRPCContext, PortCompletedRequest, QueryStatisticsRequest}
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 import org.apache.texera.amber.engine.common.virtualidentity.util.CONTROLLER
@@ -70,32 +69,21 @@ trait PortCompletedHandler {
               else operatorExecution.isOutputPortCompleted(msg.portId)
 
             if (isPortCompleted) {
-              // If this is an output port and materialized, persist cache metadata.
+              // If this is an output port and materialized, notify client (for cache upsert).
               if (!msg.input) {
                 val storageUriOpt =
                   WorkflowExecutionsResource.getResultUriByPhysicalPortId(
                     cp.workflowContext.executionId,
                     globalPortId
                   )
-                (storageUriOpt, Option(cp.workflowScheduler.physicalPlan)) match {
-                  case (Some(uri), Some(plan)) =>
-                    val fingerprint = FingerprintUtil.computeSubdagFingerprint(plan, globalPortId)
-                    val tupleCount =
-                      try {
-                        Some(DocumentFactory.openDocument(uri)._1.getCount)
-                      } catch {
-                        case _: Throwable => None
-                      }
-                    WorkflowExecutionsResource.upsertOperatorPortCache(
-                      cp.workflowContext.workflowId,
-                      globalPortId,
-                      fingerprint.subdagHash,
-                      fingerprint.fingerprintJson,
-                      uri,
-                      tupleCount,
-                      Some(cp.workflowContext.executionId)
-                    )
-                  case _ => // no-op if plan or URI is missing
+                storageUriOpt.foreach { uri =>
+                  val tupleCount =
+                    try {
+                      Some(DocumentFactory.openDocument(uri)._1.getCount)
+                    } catch {
+                      case _: Throwable => None
+                    }
+                  sendToClient(PortMaterialized(globalPortId, uri, tupleCount))
                 }
               }
 
