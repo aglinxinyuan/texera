@@ -26,7 +26,10 @@ import org.apache.texera.amber.engine.architecture.common.{
   AkkaActorRefMappingService,
   AkkaActorService
 }
-import org.apache.texera.amber.engine.architecture.controller.{ControllerConfig, ExecutionStateUpdate}
+import org.apache.texera.amber.engine.architecture.controller.{
+  ControllerConfig,
+  ExecutionStateUpdate
+}
 import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 
