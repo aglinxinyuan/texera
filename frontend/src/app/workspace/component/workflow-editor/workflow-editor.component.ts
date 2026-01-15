@@ -27,6 +27,7 @@ import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-w
 import { fromJointPaperEvent, JointUIService, linkPathStrokeColor } from "../../service/joint-ui/joint-ui.service";
 import { ValidationWorkflowService } from "../../service/validation/validation-workflow.service";
 import { WorkflowActionService } from "../../service/workflow-graph/model/workflow-action.service";
+import { CacheUsageService } from "../../service/workflow-status/cache-usage.service";
 import { WorkflowStatusService } from "../../service/workflow-status/workflow-status.service";
 import { ExecutionState, OperatorState } from "../../types/execute-workflow.interface";
 import { LogicalPort, OperatorLink } from "../../types/workflow-common.interface";
@@ -102,6 +103,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     private validationWorkflowService: ValidationWorkflowService,
     private jointUIService: JointUIService,
     private workflowStatusService: WorkflowStatusService,
+    private cacheUsageService: CacheUsageService,
     private executeWorkflowService: ExecuteWorkflowService,
     private nzModalService: NzModalService,
     private changeDetectorRef: ChangeDetectorRef,
@@ -163,6 +165,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     this.handlePortHighlightEvent();
     this.registerPortDisplayNameChangeHandler();
     this.handleOperatorStatisticsUpdate();
+    this.handleCacheUsageUpdate();
     this.handleRegionEvents();
     this.handleOperatorSuggestionHighlightEvent();
     this.handleElementDelete();
@@ -303,7 +306,8 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
               op.operatorID,
               status[op.operatorID],
               this.isSource(op.operatorID),
-              this.isSink(op.operatorID)
+              this.isSink(op.operatorID),
+              this.cacheUsageService.getPortCacheLabels(op.operatorID)
             );
           });
       });
@@ -330,6 +334,27 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
               this.jointUIService.changeOperatorState(this.paper, op.operatorID, operatorState);
             });
         }
+      });
+  }
+
+  /**
+   * Updates cached output port labels whenever cache usage metadata changes.
+   */
+  private handleCacheUsageUpdate(): void {
+    this.cacheUsageService
+      .getCacheUsageStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(() => {
+        this.workflowActionService
+          .getTexeraGraph()
+          .getAllOperators()
+          .forEach(op => {
+            this.jointUIService.changeOperatorCacheLabels(
+              this.paper,
+              op.operatorID,
+              this.cacheUsageService.getPortCacheLabels(op.operatorID)
+            );
+          });
       });
   }
 
