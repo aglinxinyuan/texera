@@ -93,12 +93,15 @@ class ExecutionStatsService(
 
   addSubscription(
     stateStore.statsStore.registerDiffHandler((oldState, newState) => {
-      // Update operator stats if any operator updates its stat
+      // Update operator stats if any operator updates its stat.
       if (newState.operatorInfo.toSet != oldState.operatorInfo.toSet) {
         Iterable(
           OperatorStatisticsUpdateEvent(newState.operatorInfo.collect {
-            case x =>
-              val metrics = x._2
+            case (operatorId, metrics) =>
+              val inputCounts = metrics.operatorStatistics.inputMetrics.map(_.tupleMetrics.count)
+              val inputSizes = metrics.operatorStatistics.inputMetrics.map(_.tupleMetrics.size)
+              val outputCounts = metrics.operatorStatistics.outputMetrics.map(_.tupleMetrics.count)
+              val outputSizes = metrics.operatorStatistics.outputMetrics.map(_.tupleMetrics.size)
               val inMap = metrics.operatorStatistics.inputMetrics
                 .map(pm => pm.portId.id.toString -> pm.tupleMetrics.count)
                 .toMap
@@ -106,20 +109,19 @@ class ExecutionStatsService(
                 .map(pm => pm.portId.id.toString -> pm.tupleMetrics.count)
                 .toMap
 
-              val res = OperatorAggregatedMetrics(
+              operatorId -> OperatorAggregatedMetrics(
                 Utils.aggregatedStateToString(metrics.operatorState),
-                metrics.operatorStatistics.inputMetrics.map(_.tupleMetrics.count).sum,
-                metrics.operatorStatistics.inputMetrics.map(_.tupleMetrics.size).sum,
+                sumNonNegative(inputCounts),
+                sumNonNegative(inputSizes),
                 inMap,
-                metrics.operatorStatistics.outputMetrics.map(_.tupleMetrics.count).sum,
-                metrics.operatorStatistics.outputMetrics.map(_.tupleMetrics.size).sum,
+                sumNonNegative(outputCounts),
+                sumNonNegative(outputSizes),
                 outMap,
                 metrics.operatorStatistics.numWorkers,
                 metrics.operatorStatistics.dataProcessingTime,
                 metrics.operatorStatistics.controlProcessingTime,
                 metrics.operatorStatistics.idleTime
               )
-              (x._1, res)
           })
         )
       } else {
@@ -246,15 +248,19 @@ class ExecutionStatsService(
     try {
       operatorStatistics.foreach {
         case (operatorId, stat) =>
+          val inputCounts = stat.operatorStatistics.inputMetrics.map(_.tupleMetrics.count)
+          val inputSizes = stat.operatorStatistics.inputMetrics.map(_.tupleMetrics.size)
+          val outputCounts = stat.operatorStatistics.outputMetrics.map(_.tupleMetrics.count)
+          val outputSizes = stat.operatorStatistics.outputMetrics.map(_.tupleMetrics.size)
           val runtimeStats = new Tuple(
             ResultSchema.runtimeStatisticsSchema,
             Array(
               operatorId,
               new java.sql.Timestamp(System.currentTimeMillis()),
-              stat.operatorStatistics.inputMetrics.map(_.tupleMetrics.count).sum,
-              stat.operatorStatistics.inputMetrics.map(_.tupleMetrics.size).sum,
-              stat.operatorStatistics.outputMetrics.map(_.tupleMetrics.count).sum,
-              stat.operatorStatistics.outputMetrics.map(_.tupleMetrics.size).sum,
+              sumNonNegative(inputCounts),
+              sumNonNegative(inputSizes),
+              sumNonNegative(outputCounts),
+              sumNonNegative(outputSizes),
               stat.operatorStatistics.dataProcessingTime,
               stat.operatorStatistics.controlProcessingTime,
               stat.operatorStatistics.idleTime,
@@ -267,6 +273,13 @@ class ExecutionStatsService(
     } catch {
       case err: Throwable => logger.error("error occurred when storing runtime statistics", err)
     }
+  }
+
+  /**
+    * Sums non-negative metric values, treating negative sentinel values as unknown.
+    */
+  private def sumNonNegative(values: Iterable[Long]): Long = {
+    values.filter(_ >= 0).sum
   }
 
   private[this] def registerCallbackOnWorkerAssignedUpdate(): Unit = {
