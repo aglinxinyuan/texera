@@ -323,6 +323,7 @@ export class WorkflowCompilingService {
    * Triggers cache invalidation after a successful compilation.
    * Cache entries with mismatched fingerprints are removed on the backend, and
    * the cache panel is notified when entries are actually removed.
+   * This is skipped when auto invalidation is disabled in the cache panel.
    */
   private invalidateMismatchedCacheEntries(logicalPlan: LogicalPlan): void {
     const workflowId = this.workflowActionService.getWorkflowMetadata().wid;
@@ -331,6 +332,9 @@ export class WorkflowCompilingService {
       workflowId <= 0 ||
       this.currentCompilationStateInfo.state !== CompilationState.Succeeded
     ) {
+      return;
+    }
+    if (!this.cacheEntriesService.isAutoInvalidationEnabled()) {
       return;
     }
     const beforeKeys = new Set(
