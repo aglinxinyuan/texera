@@ -321,7 +321,8 @@ export class WorkflowCompilingService {
 
   /**
    * Triggers cache invalidation after a successful compilation.
-   * Cache entries with mismatched fingerprints are removed on the backend.
+   * Cache entries with mismatched fingerprints are removed on the backend, and
+   * the cache panel is notified when entries are actually removed.
    */
   private invalidateMismatchedCacheEntries(logicalPlan: LogicalPlan): void {
     const workflowId = this.workflowActionService.getWorkflowMetadata().wid;
@@ -332,6 +333,9 @@ export class WorkflowCompilingService {
     ) {
       return;
     }
+    const beforeKeys = new Set(
+      this.cacheEntriesService.getCacheEntriesSnapshot().map(entry => this.cacheEntriesService.buildEntryKey(entry))
+    );
     this.workflowExecutionsService
       .invalidateWorkflowCacheEntries(workflowId, logicalPlan)
       .pipe(
@@ -341,7 +345,16 @@ export class WorkflowCompilingService {
         })
       )
       .subscribe(() => {
-        this.cacheEntriesService.refreshCacheEntries(workflowId).subscribe();
+        this.cacheEntriesService.refreshCacheEntries(workflowId).subscribe(entries => {
+          const afterKeys = new Set(entries.map(entry => this.cacheEntriesService.buildEntryKey(entry)));
+          let removedCount = 0;
+          beforeKeys.forEach(key => {
+            if (!afterKeys.has(key)) {
+              removedCount += 1;
+            }
+          });
+          this.cacheEntriesService.notifyInvalidation(workflowId, removedCount);
+        });
       });
   }
 
