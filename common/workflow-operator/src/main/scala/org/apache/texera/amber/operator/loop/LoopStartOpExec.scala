@@ -17,11 +17,11 @@
  * under the License.
  */
 
-package org.apache.amber.operator.loop
+package org.apache.texera.amber.operator.loop
 
-import org.apache.amber.core.executor.OperatorExecutor
-import org.apache.amber.core.tuple.{Tuple, TupleLike}
-import org.apache.amber.util.JSONUtils.objectMapper
+import org.apache.texera.amber.core.executor.OperatorExecutor
+import org.apache.texera.amber.core.tuple.{Tuple, TupleLike}
+import org.apache.texera.amber.util.JSONUtils.objectMapper
 
 import scala.collection.mutable
 
