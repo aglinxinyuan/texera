@@ -33,6 +33,7 @@ import org.apache.texera.dao.jooq.generated.tables.pojos.WorkflowUserAccess
 import org.apache.texera.web.model.common.AccessEntry
 import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowAccessResource.{
   context,
+  getPrivilege,
   hasWriteAccess
 }
 import org.jooq.DSLContext
@@ -174,10 +175,16 @@ class WorkflowAccessResource() {
       @PathParam("privilege") privilege: String,
       @Auth user: SessionUser
   ): Unit = {
-    if (email.equals(user.getEmail)) {
+    val isModifyingOwnAccess = email.equals(user.getEmail)
+    val currentPrivilege = getPrivilege(wid, user.getUid)
+    val hasExistingAccess = !currentPrivilege.eq(PrivilegeEnum.NONE)
+
+    // Users can only modify their own access if they already have access
+    if (isModifyingOwnAccess && !hasExistingAccess) {
       throw new BadRequestException("You cannot grant access to yourself!")
     }
 
+    // Must have write access to modify access levels (including your own)
     if (!hasWriteAccess(wid, user.getUid)) {
       throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
     }
@@ -220,17 +227,32 @@ class WorkflowAccessResource() {
       @PathParam("email") email: String,
       @Auth user: SessionUser
   ): Unit = {
-    if (!hasWriteAccess(wid, user.getUid)) {
-      throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
-    }
+    try {
+      val targetUserUid = userDao.fetchOneByEmail(email).getUid
+      val workflowOwnerUid = workflowOfUserDao.fetchByWid(wid).get(0).getUid
 
-    context
-      .delete(WORKFLOW_USER_ACCESS)
-      .where(
-        WORKFLOW_USER_ACCESS.UID
-          .eq(userDao.fetchOneByEmail(email).getUid)
-          .and(WORKFLOW_USER_ACCESS.WID.eq(wid))
-      )
-      .execute()
+      // Prevent owner from revoking their own access
+      if (targetUserUid == workflowOwnerUid) {
+        throw new ForbiddenException("The owner cannot revoke their own access")
+      }
+
+      // Allow if: (1) user has WRITE access, OR (2) user is revoking their own access
+      val isRevokingOwnAccess = targetUserUid == user.getUid
+      if (!hasWriteAccess(wid, user.getUid) && !isRevokingOwnAccess) {
+        throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
+      }
+
+      context
+        .delete(WORKFLOW_USER_ACCESS)
+        .where(
+          WORKFLOW_USER_ACCESS.UID
+            .eq(targetUserUid)
+            .and(WORKFLOW_USER_ACCESS.WID.eq(wid))
+        )
+        .execute()
+    } catch {
+      case _: NullPointerException =>
+        throw new BadRequestException(s"User $email Not Found!")
+    }
   }
 }
