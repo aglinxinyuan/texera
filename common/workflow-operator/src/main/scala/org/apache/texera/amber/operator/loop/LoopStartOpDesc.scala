@@ -44,7 +44,7 @@ class LoopStartOpDesc extends LogicalOp {
         executionId,
         operatorIdentifier,
         OpExecWithClassName(
-          "org.apache.amber.operator.loop.LoopStartOpExec",
+          "org.apache.texera.amber.operator.loop.LoopStartOpExec",
           objectMapper.writeValueAsString(this)
         )
       )

@@ -35,7 +35,7 @@ class LoopEndOpDesc extends LogicalOp {
         workflowId,
         executionId,
         operatorIdentifier,
-        OpExecWithClassName("org.apache.amber.operator.loop.LoopEndOpExec")
+        OpExecWithClassName("org.apache.texera.amber.operator.loop.LoopEndOpExec")
       )
       .withInputPorts(operatorInfo.inputPorts)
       .withOutputPorts(operatorInfo.outputPorts)
