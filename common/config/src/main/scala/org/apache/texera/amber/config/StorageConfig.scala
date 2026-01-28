@@ -63,6 +63,7 @@ object StorageConfig {
     conf.getInt("storage.iceberg.table.commit.retry.min-wait-ms")
   val icebergTableCommitMaxRetryWaitMs: Int =
     conf.getInt("storage.iceberg.table.commit.retry.max-wait-ms")
+  val icebergTableECMNamespace: String = conf.getString("storage.iceberg.table.ecm-namespace")
 
   // LakeFS specifics
   // lakefsEndpoint is a var because in test we need to override it to point to the test container
@@ -116,6 +117,7 @@ object StorageConfig {
   val ENV_ICEBERG_TABLE_COMMIT_NUM_RETRIES = "STORAGE_ICEBERG_TABLE_COMMIT_NUM_RETRIES"
   val ENV_ICEBERG_TABLE_COMMIT_MIN_WAIT_MS = "STORAGE_ICEBERG_TABLE_COMMIT_MIN_WAIT_MS"
   val ENV_ICEBERG_TABLE_COMMIT_MAX_WAIT_MS = "STORAGE_ICEBERG_TABLE_COMMIT_MAX_WAIT_MS"
+  val ENV_ICEBERG_TABLE_ECM_NAMESPACE = "STORAGE_ICEBERG_TABLE_ECM_NAMESPACE"
 
   // LakeFS
   val ENV_LAKEFS_ENDPOINT = "STORAGE_LAKEFS_ENDPOINT"

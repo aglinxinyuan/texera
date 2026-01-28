@@ -188,13 +188,15 @@ class DataProcessor(
           PORT_ALIGNMENT,
           EndIterationRequest(worker)
         )
+
         executor.reset()
       case schemaEnforceable: SchemaEnforceable =>
         val portIdentity = outputPortOpt.getOrElse(outputManager.getSingleOutputPortIdentity)
         val tuple = schemaEnforceable.enforceSchema(outputManager.getPort(portIdentity).schema)
         statisticsManager.increaseOutputStatistics(portIdentity, tuple.inMemSize)
         outputManager.passTupleToDownstream(tuple, outputPortOpt)
-        outputManager.saveTupleToStorageIfNeeded(tuple, outputPortOpt)
+        outputManager.saveTupleToStorageIfNeeded(Right(actorId.toString), outputPortOpt)
+        outputManager.saveTupleToStorageIfNeeded(Left(tuple), outputPortOpt)
 
       case other => // skip for now
     }

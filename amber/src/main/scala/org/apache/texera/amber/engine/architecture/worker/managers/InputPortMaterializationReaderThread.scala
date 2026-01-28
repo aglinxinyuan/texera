@@ -84,6 +84,16 @@ class InputPortMaterializationReaderThread(
     // Notify the input port of start of input channel
     emitECM(METHOD_START_CHANNEL, NO_ALIGNMENT)
     try {
+      val ecm: VirtualDocument[Tuple] = DocumentFactory
+        .openDocument(uri.resolve("ecm"))
+        ._1
+        .asInstanceOf[VirtualDocument[Tuple]]
+      val ecmReadIterator = ecm.get()
+      if (ecmReadIterator.hasNext) {
+        val tuple = ecmReadIterator.next()
+        println("Received ECM tuple: " + tuple)
+      }
+
       val materialization: VirtualDocument[Tuple] = DocumentFactory
         .openDocument(uri)
         ._1

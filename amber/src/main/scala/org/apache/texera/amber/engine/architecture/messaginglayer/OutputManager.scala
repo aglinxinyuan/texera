@@ -20,22 +20,16 @@
 package org.apache.texera.amber.engine.architecture.messaginglayer
 
 import org.apache.texera.amber.core.state.State
-import org.apache.texera.amber.core.storage.DocumentFactory
+import org.apache.texera.amber.core.storage.{DocumentFactory, VFSResourceType}
 import org.apache.texera.amber.core.storage.model.BufferedItemWriter
+import org.apache.texera.amber.core.storage.result.ResultSchema
 import org.apache.texera.amber.core.tuple._
 import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity}
 import org.apache.texera.amber.core.workflow.{PhysicalLink, PortIdentity}
-import org.apache.texera.amber.engine.architecture.messaginglayer.OutputManager.{
-  DPOutputIterator,
-  getBatchSize,
-  toPartitioner
-}
+import org.apache.texera.amber.engine.architecture.messaginglayer.OutputManager.{DPOutputIterator, getBatchSize, toPartitioner}
 import org.apache.texera.amber.engine.architecture.sendsemantics.partitioners._
 import org.apache.texera.amber.engine.architecture.sendsemantics.partitionings._
-import org.apache.texera.amber.engine.architecture.worker.managers.{
-  OutputPortResultWriterThread,
-  PortStorageWriterTerminateSignal
-}
+import org.apache.texera.amber.engine.architecture.worker.managers.{OutputPortResultWriterThread, PortStorageWriterTerminateSignal}
 import org.apache.texera.amber.engine.common.AmberLogging
 import org.apache.texera.amber.util.VirtualIdentityUtils
 
@@ -215,7 +209,7 @@ class OutputManager(
     * @param outputPortId If not specified, the tuple will be written to all output ports that need storage.
     */
   def saveTupleToStorageIfNeeded(
-      tuple: Tuple,
+      tuple: Either[Tuple, String],
       outputPortId: Option[PortIdentity] = None
   ): Unit = {
     (outputPortId match {
@@ -284,12 +278,19 @@ class OutputManager(
   }
 
   private def setupOutputStorageWriterThread(portId: PortIdentity, storageUri: URI): Unit = {
-    val bufferedItemWriter = DocumentFactory
+    val bufferedTupleWriter = DocumentFactory
       .openDocument(storageUri)
       ._1
       .writer(VirtualIdentityUtils.getWorkerIndex(actorId).toString)
       .asInstanceOf[BufferedItemWriter[Tuple]]
-    val writerThread = new OutputPortResultWriterThread(bufferedItemWriter)
+
+    val ecmUri = storageUri.resolve("ecm")
+    val bufferedECMWriter = DocumentFactory
+      .createDocument(ecmUri, ResultSchema.ecmSchema)
+      .writer(VirtualIdentityUtils.getWorkerIndex(actorId).toString)
+      .asInstanceOf[BufferedItemWriter[Tuple]]
+
+    val writerThread = new OutputPortResultWriterThread(bufferedTupleWriter, bufferedECMWriter)
     this.outputPortResultWriterThreads(portId) = writerThread
     writerThread.start()
   }

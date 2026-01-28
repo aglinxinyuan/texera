@@ -22,6 +22,7 @@ package org.apache.texera.amber.engine.architecture.worker.managers
 import com.google.common.collect.Queues
 import org.apache.texera.amber.core.storage.model.BufferedItemWriter
 import org.apache.texera.amber.core.tuple.Tuple
+import org.apache.texera.amber.core.storage.result.ResultSchema
 
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -29,21 +30,28 @@ sealed trait TerminateSignal
 case object PortStorageWriterTerminateSignal extends TerminateSignal
 
 class OutputPortResultWriterThread(
-    bufferedItemWriter: BufferedItemWriter[Tuple]
+    bufferedTupleWriter: BufferedItemWriter[Tuple],
+    bufferedECMWriter: BufferedItemWriter[Tuple]
 ) extends Thread {
 
-  val queue: LinkedBlockingQueue[Either[Tuple, TerminateSignal]] =
-    Queues.newLinkedBlockingQueue[Either[Tuple, TerminateSignal]]()
+  val queue: LinkedBlockingQueue[Either[Either[Tuple, String], TerminateSignal]] =
+    Queues.newLinkedBlockingQueue[Either[Either[Tuple, String], TerminateSignal]]()
 
   override def run(): Unit = {
     var internalStop = false
     while (!internalStop) {
       val queueContent = queue.take()
       queueContent match {
-        case Left(tuple) => bufferedItemWriter.putOne(tuple)
+        case Left(item) => item match {
+          case Left(tuple) => bufferedTupleWriter.putOne(tuple)
+          case Right(ecm)    =>
+            val ecmTuple = new Tuple(ResultSchema.ecmSchema, Array(ecm))
+            bufferedECMWriter.putOne(ecmTuple)
+      }
         case Right(_)    => internalStop = true
       }
     }
-    bufferedItemWriter.close()
+    bufferedTupleWriter.close()
+    bufferedECMWriter.close()
   }
 }
