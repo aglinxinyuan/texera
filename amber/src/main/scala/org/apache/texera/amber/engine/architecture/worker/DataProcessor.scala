@@ -183,12 +183,13 @@ class DataProcessor(
           asyncRPCClient.mkContext(CONTROLLER)
         )
       case FinalizeIteration(portId: PortIdentity, worker: ActorVirtualIdentity) =>
+        println(s"FinalizeIteration received at worker $actorId for port $portId")
         sendECMToDataChannels(
           METHOD_END_ITERATION.getBareMethodName,
           PORT_ALIGNMENT,
           EndIterationRequest(worker)
         )
-        outputManager.saveTupleToStorageIfNeeded(Right(actorId.toString), outputPortOpt)
+        outputManager.saveTupleToStorageIfNeeded(Right(actorId.name), outputPortOpt)
         outputManager.closeOutputStorageWriterIfNeeded(portId)
         asyncRPCClient.controllerInterface.portCompleted(PortCompletedRequest(portId, input = false), asyncRPCClient.mkContext(CONTROLLER)) // fix this line, add iteration completed rpc
         executor.reset()
@@ -246,6 +247,10 @@ class DataProcessor(
     inputManager.currentChannelId = channelId
     val command = ecm.commandMapping.get(actorId.name)
     logger.info(s"receive ECM from $channelId, id = ${ecm.id}, cmd = $command")
+    asyncRPCClient.controllerInterface.consoleMessageTriggered(
+      ConsoleMessageTriggeredRequest(mkConsoleMessage(actorId, s"receive ECM from $channelId, id = ${ecm.id}, cmd = $command")),
+      asyncRPCClient.mkContext(CONTROLLER)
+    )
     if (ecm.ecmType != NO_ALIGNMENT) {
       pauseManager.pauseInputChannel(ECMPause(ecm.id), List(channelId))
     }

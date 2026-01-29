@@ -24,27 +24,14 @@ import org.apache.texera.amber.config.ApplicationConfig
 import org.apache.texera.amber.core.storage.DocumentFactory
 import org.apache.texera.amber.core.storage.model.VirtualDocument
 import org.apache.texera.amber.core.tuple.Tuple
-import org.apache.texera.amber.core.virtualidentity.{
-  ActorVirtualIdentity,
-  ChannelIdentity,
-  EmbeddedControlMessageIdentity
-}
+import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity, EmbeddedControlMessageIdentity}
 import org.apache.texera.amber.engine.architecture.messaginglayer.OutputManager.toPartitioner
-import org.apache.texera.amber.engine.architecture.rpc.controlcommands.EmbeddedControlMessageType.{
-  NO_ALIGNMENT,
-  PORT_ALIGNMENT
-}
+import org.apache.texera.amber.engine.architecture.rpc.controlcommands.EmbeddedControlMessageType.{NO_ALIGNMENT, PORT_ALIGNMENT}
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands._
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
-import org.apache.texera.amber.engine.architecture.rpc.workerservice.WorkerServiceGrpc.{
-  METHOD_END_CHANNEL,
-  METHOD_START_CHANNEL
-}
+import org.apache.texera.amber.engine.architecture.rpc.workerservice.WorkerServiceGrpc.{METHOD_END_CHANNEL, METHOD_END_ITERATION, METHOD_START_CHANNEL}
 import org.apache.texera.amber.engine.architecture.sendsemantics.partitionings.Partitioning
-import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.{
-  DPInputQueueElement,
-  FIFOMessageElement
-}
+import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.{DPInputQueueElement, FIFOMessageElement}
 import org.apache.texera.amber.engine.common.ambermessage.{DataFrame, WorkflowFIFOMessage}
 import org.apache.texera.amber.util.VirtualIdentityUtils.getFromActorIdForInputPortStorage
 
@@ -82,17 +69,14 @@ class InputPortMaterializationReaderThread(
     */
   override def run(): Unit = {
     // Notify the input port of start of input channel
-    emitECM(METHOD_START_CHANNEL, NO_ALIGNMENT)
+    emitECM(METHOD_START_CHANNEL.getBareMethodName, NO_ALIGNMENT)
     try {
       val ecm: VirtualDocument[Tuple] = DocumentFactory
         .openDocument(uri.resolve("ecm"))
         ._1
         .asInstanceOf[VirtualDocument[Tuple]]
       val ecmReadIterator = ecm.get()
-      if (ecmReadIterator.hasNext) {
-        val tuple = ecmReadIterator.next()
-        println("Received ECM tuple: " + tuple)
-      }
+
 
       val materialization: VirtualDocument[Tuple] = DocumentFactory
         .openDocument(uri)
@@ -116,7 +100,15 @@ class InputPortMaterializationReaderThread(
       }
       // Flush any remaining tuples in the buffer.
       if (buffer.nonEmpty) flush()
-      emitECM(METHOD_END_CHANNEL, PORT_ALIGNMENT)
+
+
+      if (ecmReadIterator.hasNext) {
+        val tuple = ecmReadIterator.next()
+        println("Received ECM tuple: " + tuple.getField("workerId"))
+        emitECM(METHOD_END_ITERATION.getBareMethodName, NO_ALIGNMENT, EndIterationRequest(ActorVirtualIdentity(tuple.getField("workerId"))))
+      } else {
+        emitECM(METHOD_END_CHANNEL.getBareMethodName, PORT_ALIGNMENT)
+      }
       isFinished.set(true)
     } catch {
       case e: Exception =>
@@ -128,19 +120,21 @@ class InputPortMaterializationReaderThread(
     * Puts an ECM into the internal queue.
     */
   private def emitECM(
-      method: MethodDescriptor[EmptyRequest, EmptyReturn],
-      alignment: EmbeddedControlMessageType
+                       method: String,
+                       alignment: EmbeddedControlMessageType,
+                       request: ControlRequest = EmptyRequest()
+
   ): Unit = {
     flush()
     val ecm = EmbeddedControlMessage(
-      EmbeddedControlMessageIdentity(method.getBareMethodName),
+      EmbeddedControlMessageIdentity(method),
       alignment,
       Seq(),
       Map(
         workerActorId.name ->
           ControlInvocation(
-            method.getBareMethodName,
-            EmptyRequest(),
+            method,
+            request,
             AsyncRPCContext(ActorVirtualIdentity(""), ActorVirtualIdentity("")),
             -1
           )
