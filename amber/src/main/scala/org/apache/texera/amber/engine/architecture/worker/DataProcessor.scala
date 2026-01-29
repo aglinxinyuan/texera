@@ -174,7 +174,7 @@ class DataProcessor(
           EmptyRequest(),
           asyncRPCClient.mkContext(CONTROLLER)
         )
-      case FinalizePort(portId, input) =>
+      case FinalizePort(portId: PortIdentity, input: Boolean) =>
         if (!input) {
           outputManager.closeOutputStorageWriterIfNeeded(portId)
         }
@@ -182,20 +182,20 @@ class DataProcessor(
           PortCompletedRequest(portId, input),
           asyncRPCClient.mkContext(CONTROLLER)
         )
-      case FinalizeIteration(worker: ActorVirtualIdentity) =>
+      case FinalizeIteration(portId: PortIdentity, worker: ActorVirtualIdentity) =>
         sendECMToDataChannels(
           METHOD_END_ITERATION.getBareMethodName,
           PORT_ALIGNMENT,
           EndIterationRequest(worker)
         )
-
+        outputManager.saveTupleToStorageIfNeeded(Right(actorId.toString), outputPortOpt)
+        outputManager.closeOutputStorageWriterIfNeeded(portId)
+        asyncRPCClient.controllerInterface.portCompleted(PortCompletedRequest(portId, input = false), asyncRPCClient.mkContext(CONTROLLER)) // fix this line, add iteration completed rpc
         executor.reset()
       case schemaEnforceable: SchemaEnforceable =>
         val portIdentity = outputPortOpt.getOrElse(outputManager.getSingleOutputPortIdentity)
         val tuple = schemaEnforceable.enforceSchema(outputManager.getPort(portIdentity).schema)
         statisticsManager.increaseOutputStatistics(portIdentity, tuple.inMemSize)
-        outputManager.passTupleToDownstream(tuple, outputPortOpt)
-        outputManager.saveTupleToStorageIfNeeded(Right(actorId.toString), outputPortOpt)
         outputManager.saveTupleToStorageIfNeeded(Left(tuple), outputPortOpt)
 
       case other => // skip for now

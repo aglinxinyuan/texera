@@ -42,7 +42,7 @@ trait InternalMarker extends TupleLike {
 
 final case class FinalizePort(portId: PortIdentity, input: Boolean) extends InternalMarker
 final case class FinalizeExecutor() extends InternalMarker
-final case class FinalizeIteration(worker: ActorVirtualIdentity) extends InternalMarker
+final case class FinalizeIteration(portId: PortIdentity, worker: ActorVirtualIdentity) extends InternalMarker
 
 trait SeqTupleLike extends TupleLike with SchemaEnforceable {
   override def inMemSize: Long = ???

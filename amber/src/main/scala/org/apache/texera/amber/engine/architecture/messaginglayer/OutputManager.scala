@@ -255,7 +255,10 @@ class OutputManager(
   }
 
   def finalizeIteration(worker: ActorVirtualIdentity): Unit = {
-    outputIterator.appendSpecialTupleToEnd(FinalizeIteration(worker))
+    this.ports.keys
+      .foreach(outputPortId =>
+        outputIterator.appendSpecialTupleToEnd(FinalizeIteration(outputPortId, worker))
+      )
   }
 
   /**
