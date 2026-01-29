@@ -19,50 +19,32 @@
 
 package org.apache.texera.amber.engine.architecture.worker
 
+import com.google.protobuf.timestamp.Timestamp
 import com.softwaremill.macwire.wire
 import io.grpc.MethodDescriptor
 import org.apache.texera.amber.core.executor.OperatorExecutor
 import org.apache.texera.amber.core.state.State
 import org.apache.texera.amber.core.tuple._
-import org.apache.texera.amber.core.virtualidentity.{
-  ActorVirtualIdentity,
-  ChannelIdentity,
-  EmbeddedControlMessageIdentity
-}
+import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity, EmbeddedControlMessageIdentity}
 import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.engine.architecture.common.AmberProcessor
 import org.apache.texera.amber.engine.architecture.logreplay.ReplayLogManager
-import org.apache.texera.amber.engine.architecture.messaginglayer.{
-  InputManager,
-  OutputManager,
-  WorkerTimerService
-}
-import org.apache.texera.amber.engine.architecture.rpc.controlcommands.EmbeddedControlMessageType.{
-  NO_ALIGNMENT,
-  PORT_ALIGNMENT
-}
+import org.apache.texera.amber.engine.architecture.messaginglayer.{InputManager, OutputManager, WorkerTimerService}
+import org.apache.texera.amber.engine.architecture.rpc.controlcommands.ConsoleMessageType.{ERROR, PRINT}
+import org.apache.texera.amber.engine.architecture.rpc.controlcommands.EmbeddedControlMessageType.{NO_ALIGNMENT, PORT_ALIGNMENT}
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands._
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
-import org.apache.texera.amber.engine.architecture.rpc.workerservice.WorkerServiceGrpc.{
-  METHOD_END_CHANNEL,
-  METHOD_END_ITERATION
-}
-import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.{
-  DPInputQueueElement,
-  MainThreadDelegateMessage
-}
+import org.apache.texera.amber.engine.architecture.rpc.workerservice.WorkerServiceGrpc.{METHOD_END_CHANNEL, METHOD_END_ITERATION}
+import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.{DPInputQueueElement, MainThreadDelegateMessage}
 import org.apache.texera.amber.engine.architecture.worker.managers.SerializationManager
-import org.apache.texera.amber.engine.architecture.worker.statistics.WorkerState.{
-  COMPLETED,
-  READY,
-  RUNNING
-}
+import org.apache.texera.amber.engine.architecture.worker.statistics.WorkerState.{COMPLETED, READY, RUNNING}
 import org.apache.texera.amber.engine.architecture.worker.statistics.WorkerStatistics
 import org.apache.texera.amber.engine.common.ambermessage._
 import org.apache.texera.amber.engine.common.statetransition.WorkerStateManager
 import org.apache.texera.amber.engine.common.virtualidentity.util.CONTROLLER
 import org.apache.texera.amber.error.ErrorUtils.{mkConsoleMessage, safely}
 
+import java.time.Instant
 import java.util.concurrent.LinkedBlockingQueue
 
 class DataProcessor(
@@ -189,7 +171,7 @@ class DataProcessor(
           PORT_ALIGNMENT,
           EndIterationRequest(worker)
         )
-        outputManager.saveTupleToStorageIfNeeded(Right(actorId.name), outputPortOpt)
+        outputManager.saveTupleToStorageIfNeeded(Right("Iteration number = 0, " + worker.name), outputPortOpt)
         outputManager.closeOutputStorageWriterIfNeeded(portId)
         asyncRPCClient.controllerInterface.portCompleted(PortCompletedRequest(portId, input = false), asyncRPCClient.mkContext(CONTROLLER)) // fix this line, add iteration completed rpc
         executor.reset()
@@ -247,8 +229,10 @@ class DataProcessor(
     inputManager.currentChannelId = channelId
     val command = ecm.commandMapping.get(actorId.name)
     logger.info(s"receive ECM from $channelId, id = ${ecm.id}, cmd = $command")
+
+
     asyncRPCClient.controllerInterface.consoleMessageTriggered(
-      ConsoleMessageTriggeredRequest(mkConsoleMessage(actorId, s"receive ECM from $channelId, id = ${ecm.id}, cmd = $command")),
+      ConsoleMessageTriggeredRequest(ConsoleMessage(actorId.name, Timestamp(Instant.now), PRINT, "", s"received ECM from MATERIALIZATION_READER, id = ${ecm.id}", s"cmd = $command")),
       asyncRPCClient.mkContext(CONTROLLER)
     )
     if (ecm.ecmType != NO_ALIGNMENT) {
