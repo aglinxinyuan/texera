@@ -38,24 +38,24 @@ trait EndIterationHandler {
       case _: LoopEndOpExec =>
         workerInterface.nextIteration(EmptyRequest(), mkContext(request.worker))
       case _ =>
-        val channelId = dp.inputManager.currentChannelId
-        val portId = dp.inputGateway.getChannel(channelId).getPortId
-        dp.inputManager.getPort(portId).completed = true
-        dp.inputManager.initBatch(channelId, Array.empty)
-        dp.processOnFinish()
+    }
+    val channelId = dp.inputManager.currentChannelId
+    val portId = dp.inputGateway.getChannel(channelId).getPortId
+    dp.inputManager.getPort(portId).completed = true
+    dp.inputManager.initBatch(channelId, Array.empty)
+    dp.processOnFinish()
 
-        dp.outputManager.outputIterator.appendSpecialTupleToEnd(
-          FinalizePort(portId, input = true)
-        )
+    dp.outputManager.outputIterator.appendSpecialTupleToEnd(
+      FinalizePort(portId, input = true)
+    )
 
-        if (dp.inputManager.getAllPorts.forall(portId => dp.inputManager.isPortCompleted(portId))) {
-          // Need this check for handling input port dependency relationships.
-          // See documentation of isMissingOutputPort
-          if (!dp.outputManager.isMissingOutputPort) {
-            // assuming all the output ports finalize after all input ports are finalized.
-            dp.outputManager.finalizeIteration(request.worker)
-          }
-        }
+    if (dp.inputManager.getAllPorts.forall(portId => dp.inputManager.isPortCompleted(portId))) {
+      // Need this check for handling input port dependency relationships.
+      // See documentation of isMissingOutputPort
+      if (!dp.outputManager.isMissingOutputPort) {
+        // assuming all the output ports finalize after all input ports are finalized.
+        dp.outputManager.finalizeIteration(request.worker)
+      }
     }
     EmptyReturn()
   }

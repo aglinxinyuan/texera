@@ -173,6 +173,7 @@ class DataProcessor(
           EndIterationRequest(worker)
         )
         outputManager.ECMWriterThreads(portId).putOne(new Tuple(ResultSchema.ecmSchema, Array(worker.name)))
+        outputManager.ECMWriterThreads(portId).close()
         outputManager.closeOutputStorageWriterIfNeeded(portId)
         asyncRPCClient.controllerInterface.iterationCompleted(IterationCompletedRequest(portId), asyncRPCClient.mkContext(CONTROLLER))
         executor.reset()
