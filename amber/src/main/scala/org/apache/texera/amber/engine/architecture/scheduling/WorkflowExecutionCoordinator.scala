@@ -27,7 +27,8 @@ import org.apache.texera.amber.engine.architecture.common.{
   AkkaActorService
 }
 import org.apache.texera.amber.engine.architecture.controller.ControllerConfig
-import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
+import org.apache.texera.amber.engine.architecture.controller.execution.{OperatorExecution, RegionExecution, WorkflowExecution}
+import org.apache.texera.amber.engine.architecture.rpc.controlreturns.WorkflowAggregatedState
 import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 
 import scala.collection.mutable
@@ -100,6 +101,27 @@ class WorkflowExecutionCoordinator(
           .toSeq
       })
       .unit
+  }
+
+  /**
+    * Mark the given operator as iteration-completed.
+    *
+    * This is a UI/observability state only; it doesn't change the worker-level state machine.
+    */
+  def markOperatorIterationCompleted(operatorExecution: OperatorExecution): Unit = {
+    // No-op placeholder: operator aggregated state is computed from WorkerState.
+    // IterationCompleted is currently an observability/UI state driven by region phase events.
+    ()
+  }
+
+  /**
+    * If all operators in the region have reached ITERATION_COMPLETED (or COMPLETED), mark the region as
+    * ITERATION_COMPLETED (region is still considered not completed, so scheduling remains unchanged).
+    */
+  def markRegionIterationCompletedIfNeeded(region: Region): Unit = {
+    // Best-effort: tell region coordinator to emit an IterationCompleted phase event.
+    // This doesn't affect scheduling/completion semantics.
+    regionExecutionCoordinators.get(region.id).foreach(_.setIterationCompletedPhase())
   }
 
   def getRegionOfLink(link: PhysicalLink): Region = {

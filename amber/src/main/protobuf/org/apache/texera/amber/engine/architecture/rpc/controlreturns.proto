@@ -122,6 +122,7 @@ enum WorkflowAggregatedState {
   PAUSED = 4;
   RESUMING = 5;
   COMPLETED = 6;
+  ITERATION_COMPLETED = 11;
   FAILED = 7;
   UNKNOWN = 8;
   KILLED = 9;

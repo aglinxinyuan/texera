@@ -46,6 +46,7 @@ message ControlRequest {
     PortCompletedRequest portCompletedRequest = 9;
     WorkerStateUpdatedRequest workerStateUpdatedRequest = 10;
     LinkWorkersRequest linkWorkersRequest = 11;
+    IterationCompletedRequest iterationCompletedRequest = 12;
 
     // request for worker
     AddInputChannelRequest addInputChannelRequest = 50;
@@ -167,6 +168,11 @@ message ConsoleMessageTriggeredRequest {
 message PortCompletedRequest {
   core.PortIdentity portId = 1 [(scalapb.field).no_box = true];
   bool input = 2;
+}
+
+// Notify controller that an output port has finished one iteration (used by loop operators).
+message IterationCompletedRequest {
+  core.PortIdentity portId = 1 [(scalapb.field).no_box = true];
 }
 
 message WorkerStateUpdatedRequest {

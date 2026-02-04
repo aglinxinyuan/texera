@@ -23,6 +23,7 @@ import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{AsyncRPC
 import org.apache.texera.amber.engine.architecture.worker.DataProcessorRPCHandlerInitializer
 import com.twitter.util.Future
 import org.apache.texera.amber.core.tuple.FinalizePort
+import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 import org.apache.texera.amber.operator.loop.{LoopEndOpExec, LoopStartOpExec}
 

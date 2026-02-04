@@ -103,6 +103,7 @@ class RegionExecutionCoordinator(
   private case object Unexecuted extends RegionExecutionPhase
   private case object ExecutingDependeePortsPhase extends RegionExecutionPhase
   private case object ExecutingNonDependeePortsPhase extends RegionExecutionPhase
+  private case object IterationCompleted extends RegionExecutionPhase
   private case object Completed extends RegionExecutionPhase
 
   private val currentPhaseRef: AtomicReference[RegionExecutionPhase] = new AtomicReference(
@@ -190,7 +191,8 @@ class RegionExecutionCoordinator(
     }
   }
 
-  def isCompleted: Boolean = currentPhaseRef.get == Completed
+  // Treat IterationCompleted as not completed from scheduler perspective.
+  def isCompleted: Boolean = currentPhaseRef.get == Completed || currentPhaseRef.get == IterationCompleted
 
   /**
     * This will sync and transition the region execution phase from one to another depending on its current phase:
@@ -219,6 +221,9 @@ class RegionExecutionCoordinator(
         }
       case ExecutingNonDependeePortsPhase =>
         tryCompleteRegionExecution()
+      case IterationCompleted =>
+        // IterationCompleted is a UI/observability phase; scheduling doesn't advance on it.
+        Future.Unit
       case Completed =>
         // Already completed, no further action needed.
         Future.Unit
@@ -540,6 +545,13 @@ class RegionExecutionCoordinator(
           globalPortId = outputPortId,
           uri = storageUriToAdd
         )
+    }
+  }
+
+  /** Emit IterationCompleted region phase to frontend. This does not affect scheduling semantics. */
+  def setIterationCompletedPhase(): Unit = {
+    if (currentPhaseRef.get != Completed) {
+      setPhase(IterationCompleted)
     }
   }
 

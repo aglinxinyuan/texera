@@ -30,28 +30,21 @@ sealed trait TerminateSignal
 case object PortStorageWriterTerminateSignal extends TerminateSignal
 
 class OutputPortResultWriterThread(
-    bufferedTupleWriter: BufferedItemWriter[Tuple],
-    bufferedECMWriter: BufferedItemWriter[Tuple]
+    bufferedTupleWriter: BufferedItemWriter[Tuple]
 ) extends Thread {
 
-  val queue: LinkedBlockingQueue[Either[Either[Tuple, String], TerminateSignal]] =
-    Queues.newLinkedBlockingQueue[Either[Either[Tuple, String], TerminateSignal]]()
+  val queue: LinkedBlockingQueue[Either[Tuple, TerminateSignal]] =
+    Queues.newLinkedBlockingQueue[Either[Tuple, TerminateSignal]]()
 
   override def run(): Unit = {
     var internalStop = false
     while (!internalStop) {
       val queueContent = queue.take()
       queueContent match {
-        case Left(item) => item match {
-          case Left(tuple) => bufferedTupleWriter.putOne(tuple)
-          case Right(ecm)    =>
-            val ecmTuple = new Tuple(ResultSchema.ecmSchema, Array(ecm))
-            bufferedECMWriter.putOne(ecmTuple)
-      }
+        case Left(tuple) => bufferedTupleWriter.putOne(tuple)
         case Right(_)    => internalStop = true
       }
     }
     bufferedTupleWriter.close()
-    bufferedECMWriter.close()
   }
 }

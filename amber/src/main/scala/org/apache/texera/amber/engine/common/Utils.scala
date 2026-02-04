@@ -98,6 +98,7 @@ object Utils extends LazyLogging {
       case WorkflowAggregatedState.PAUSING       => "Pausing"
       case WorkflowAggregatedState.PAUSED        => "Paused"
       case WorkflowAggregatedState.RESUMING      => "Resuming"
+      case WorkflowAggregatedState.ITERATION_COMPLETED => "IterationCompleted"
       case WorkflowAggregatedState.COMPLETED     => "Completed"
       case WorkflowAggregatedState.TERMINATED    => "Terminated"
       case WorkflowAggregatedState.FAILED        => "Failed"
@@ -117,6 +118,7 @@ object Utils extends LazyLogging {
       case "pausing"       => WorkflowAggregatedState.PAUSING
       case "paused"        => WorkflowAggregatedState.PAUSED
       case "resuming"      => WorkflowAggregatedState.RESUMING
+      case "iterationcompleted" => WorkflowAggregatedState.ITERATION_COMPLETED
       case "completed"     => WorkflowAggregatedState.COMPLETED
       case "failed"        => WorkflowAggregatedState.FAILED
       case "killed"        => WorkflowAggregatedState.KILLED

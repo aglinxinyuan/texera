@@ -74,6 +74,7 @@ export enum OperatorState {
   Pausing = "Pausing",
   Paused = "Paused",
   Resuming = "Resuming",
+  IterationCompleted = "IterationCompleted",
   Completed = "Completed",
   Recovering = "Recovering",
 }

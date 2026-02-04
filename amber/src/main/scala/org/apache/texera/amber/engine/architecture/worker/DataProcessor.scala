@@ -24,6 +24,7 @@ import com.softwaremill.macwire.wire
 import io.grpc.MethodDescriptor
 import org.apache.texera.amber.core.executor.OperatorExecutor
 import org.apache.texera.amber.core.state.State
+import org.apache.texera.amber.core.storage.result.ResultSchema
 import org.apache.texera.amber.core.tuple._
 import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity, EmbeddedControlMessageIdentity}
 import org.apache.texera.amber.core.workflow.PortIdentity
@@ -171,15 +172,15 @@ class DataProcessor(
           PORT_ALIGNMENT,
           EndIterationRequest(worker)
         )
-        outputManager.saveTupleToStorageIfNeeded(Right("Iteration number = 0, " + worker.name), outputPortOpt)
+        outputManager.ECMWriterThreads(portId).putOne(new Tuple(ResultSchema.ecmSchema, Array(worker.name)))
         outputManager.closeOutputStorageWriterIfNeeded(portId)
-        asyncRPCClient.controllerInterface.portCompleted(PortCompletedRequest(portId, input = false), asyncRPCClient.mkContext(CONTROLLER)) // fix this line, add iteration completed rpc
+        asyncRPCClient.controllerInterface.iterationCompleted(IterationCompletedRequest(portId), asyncRPCClient.mkContext(CONTROLLER))
         executor.reset()
       case schemaEnforceable: SchemaEnforceable =>
         val portIdentity = outputPortOpt.getOrElse(outputManager.getSingleOutputPortIdentity)
         val tuple = schemaEnforceable.enforceSchema(outputManager.getPort(portIdentity).schema)
         statisticsManager.increaseOutputStatistics(portIdentity, tuple.inMemSize)
-        outputManager.saveTupleToStorageIfNeeded(Left(tuple), outputPortOpt)
+        outputManager.saveTupleToStorageIfNeeded(tuple, outputPortOpt)
 
       case other => // skip for now
     }

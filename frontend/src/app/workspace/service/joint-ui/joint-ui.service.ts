@@ -401,6 +401,9 @@ export class JointUIService {
       case OperatorState.Ready:
         fillColor = "#a6bd37";
         break;
+      case OperatorState.IterationCompleted:
+        fillColor = "#9C27B0";
+        break;
       case OperatorState.Completed:
         fillColor = "green";
         break;
