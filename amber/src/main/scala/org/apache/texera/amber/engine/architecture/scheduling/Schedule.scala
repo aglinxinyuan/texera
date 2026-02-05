@@ -21,14 +21,22 @@ package org.apache.texera.amber.engine.architecture.scheduling
 
 case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterator[Set[Region]] {
   private var currentLevel = levelSets.keys.minOption.getOrElse(0)
-
+  private var loopStartLevel = currentLevel
   def getRegions: List[Region] = levelSets.values.flatten.toList
 
   override def hasNext: Boolean = levelSets.isDefinedAt(currentLevel)
 
   override def next(): Set[Region] = {
     val regions = levelSets(currentLevel)
+    if(regions.exists(_.getOperators.exists(_.id.logicalOpId.id.startsWith("LoopStart-operator-")))) loopStartLevel = currentLevel
     currentLevel += 1
+    regions
+  }
+
+  def loopNext(): Set[Region] = {
+    val regions = levelSets(currentLevel)
+    if(regions.exists(_.getOperators.exists(_.id.logicalOpId.id.startsWith("LoopEnd-operator-")))) currentLevel = loopStartLevel
+    else currentLevel += 1
     regions
   }
 }
