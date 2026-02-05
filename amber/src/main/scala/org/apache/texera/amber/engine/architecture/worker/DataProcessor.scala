@@ -172,8 +172,9 @@ class DataProcessor(
           PORT_ALIGNMENT,
           EndIterationRequest(worker)
         )
-        outputManager.ECMWriterThreads(portId).putOne(new Tuple(ResultSchema.ecmSchema, Array(worker.name)))
-        outputManager.ECMWriterThreads(portId).close()
+        val writer = outputManager.ECMWriterThreads(portId)
+        writer.putOne(new Tuple(ResultSchema.ecmSchema, Array(worker.name)))
+        writer.close()
         outputManager.closeOutputStorageWriterIfNeeded(portId)
         asyncRPCClient.controllerInterface.iterationCompleted(IterationCompletedRequest(portId), asyncRPCClient.mkContext(CONTROLLER))
         executor.reset()
