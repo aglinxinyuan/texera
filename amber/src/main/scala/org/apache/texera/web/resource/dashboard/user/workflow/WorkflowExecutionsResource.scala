@@ -66,10 +66,11 @@ import scala.jdk.CollectionConverters._
 import scala.jdk.OptionConverters._
 
 object WorkflowExecutionsResource {
-  final private lazy val context = SqlServer
-    .getInstance()
-    .createDSLContext()
-  final private lazy val executionsDao = new WorkflowExecutionsDao(context.configuration)
+  private def context: DSLContext =
+    SqlServer
+      .getInstance()
+      .createDSLContext()
+  private def executionsDao = new WorkflowExecutionsDao(context.configuration)
 
   private def getExecutionById(eId: Integer): WorkflowExecutions = {
     executionsDao.fetchOneByEid(eId)

@@ -368,7 +368,7 @@ export class JointUIService {
 
         // Negative counts mark skipped/unknown inputs from cached sub-operators.
         const isUnknownCount = count !== undefined && count < 0;
-        const labelText = isSkippedFromCache || isUnknownCount ? "-" : String(count ?? 0);
+        const labelText = isSkippedFromCache || isUnknownCount ? "-" : (count ?? 0).toLocaleString();
         element.portProp(portId, "attrs/.port-label/text", labelText);
       }
     });
@@ -379,7 +379,7 @@ export class JointUIService {
         const parts = portId.split("-");
         const numericSuffix = parts.length > 1 ? parts[1] : portId;
 
-        const count = outputMetrics[numericSuffix];
+        const count: number = outputMetrics[numericSuffix] ?? 0;
         const rawAttrs = (portDef.attrs as any) || {};
         const oldText: string = (rawAttrs[".port-label"] && rawAttrs[".port-label"].text) || "";
         let originalName = oldText.includes(":") ? oldText.split(":", 1)[0].trim() : oldText;
@@ -388,7 +388,7 @@ export class JointUIService {
           originalName = portId;
         }
 
-        const baseLabel = isSkippedFromCache && count === undefined ? "-" : String(count ?? 0);
+        const baseLabel = isSkippedFromCache && count === undefined ? "-" : (count ?? 0).toLocaleString();
         element.portProp(portId, "attrs/.port-label/text", baseLabel);
       }
     });
