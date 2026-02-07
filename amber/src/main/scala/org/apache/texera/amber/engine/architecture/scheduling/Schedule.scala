@@ -36,7 +36,7 @@ case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterat
   def loopNext(): Set[Region] = {
     val regions = levelSets(currentLevel)
     if(regions.exists(_.getOperators.exists(_.id.logicalOpId.id.startsWith("LoopEnd-operator-")))) currentLevel = loopStartLevel
-    else currentLevel += 1
+    currentLevel += 1
     regions
   }
 }
