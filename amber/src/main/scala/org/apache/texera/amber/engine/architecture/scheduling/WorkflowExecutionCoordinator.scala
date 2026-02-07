@@ -103,16 +103,6 @@ class WorkflowExecutionCoordinator(
       .unit
   }
 
-  /**
-    * Mark the given operator as iteration-completed.
-    *
-    * This is a UI/observability state only; it doesn't change the worker-level state machine.
-    */
-  def markOperatorIterationCompleted(operatorExecution: OperatorExecution): Unit = {
-    // No-op placeholder: operator aggregated state is computed from WorkerState.
-    // IterationCompleted is currently an observability/UI state driven by region phase events.
-    ()
-  }
 
   /**
     * If all operators in the region have reached ITERATION_COMPLETED (or COMPLETED), mark the region as
