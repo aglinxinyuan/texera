@@ -30,7 +30,116 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+      issues: write
     steps:
       - uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 # v5.5.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate PR description template and issue reference
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request?.body || "";
+            const title = context.payload.pull_request?.title || "";
+            const errors = [];
+            const marker = "<!-- pr-template-check -->";
+
+            const requiredSections = [
+              "### What changes were proposed in this PR?",
+              "### Any related issues, documentation, discussions?",
+              "### How was this PR tested?",
+              "### Was this PR authored or co-authored using generative AI tooling?",
+            ];
+
+            function stripComments(text) {
+              return text.replace(/<!--[\s\S]*?-->/g, "").trim();
+            }
+
+            function getSectionBody(markdown, heading) {
+              const escapeRegExp = (input) => input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const sectionRegex = new RegExp(
+                `${escapeRegExp(heading)}\\n([\\s\\S]*?)(?=\\n###\\s|$)`,
+                "m"
+              );
+              const match = markdown.match(sectionRegex);
+              return stripComments(match?.[1] || "");
+            }
+
+            if (!body.trim()) {
+              errors.push(
+                "PR description is required. Please fill in the pull request template and include an issue number."
+              );
+            } else {
+              const missingSections = requiredSections.filter((section) => !body.includes(section));
+              if (missingSections.length > 0) {
+                errors.push(`Missing required PR template section(s): ${missingSections.join(", ")}`);
+              } else {
+                const emptySections = requiredSections.filter((section) => {
+                  return getSectionBody(body, section).length === 0;
+                });
+                if (emptySections.length > 0) {
+                  errors.push(`Please fill in all required PR template section(s): ${emptySections.join(", ")}`);
+                }
+              }
+
+              const relatedIssuesSection = getSectionBody(
+                body,
+                "### Any related issues, documentation, discussions?"
+              );
+              const hasRelatedReference = /#\d+\b/.test(relatedIssuesSection);
+              const hasMinorTitleFallback = /\bminor\b/i.test(title);
+              if (!hasRelatedReference && !hasMinorTitleFallback) {
+                errors.push(
+                  "Please include at least one related issue/discussion reference in this section using #xxxx format (for example: #1234). If unavailable, use 'minor' in the PR title as fallback, for example: 'chore(minor): polish PR template wording'."
+                );
+              }
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existingComment = comments.find(
+              (comment) => comment.user?.type === "Bot" && comment.body?.includes(marker)
+            );
+
+            if (errors.length > 0) {
+              const commentBody = [
+                marker,
+                "### PR template check failed",
+                "",
+                ...errors.map((error) => `- ${error}`),
+              ].join("\n");
+
+              if (existingComment) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existingComment.id,
+                  body: commentBody,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body: commentBody,
+                });
+              }
+
+              core.setFailed(errors.join(" | "));
+              return;
+            }
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body: `${marker}\nPR template check passed on this run.`,
+              });
+            }
