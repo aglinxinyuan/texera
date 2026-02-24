@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -17,18 +17,17 @@
  * under the License.
  */
 
-#workflow-editor-wrapper {
-  height: 100%;
-}
+\c texera_db
 
-#workflow-editor {
-  height: 100%;
-}
+SET search_path TO texera_db;
 
-::ng-deep .hide-worker-count .operator-worker-count {
-  display: none;
-}
+BEGIN;
 
-::ng-deep .hide-operator-status .operator-status {
-  display: none;
-}
+-- Change description column from VARCHAR to TEXT to support Markdown content.
+ALTER TABLE dataset
+ALTER COLUMN description TYPE TEXT;
+
+ALTER TABLE workflow
+ALTER COLUMN description TYPE TEXT;
+
+COMMIT;

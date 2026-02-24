@@ -30,7 +30,8 @@ import org.apache.texera.amber.engine.architecture.controller.{
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{
   AsyncRPCContext,
   PortCompletedRequest,
-  QueryStatisticsRequest
+  QueryStatisticsRequest,
+  StatisticsUpdateTarget
 }
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 import org.apache.texera.amber.engine.architecture.scheduling.config.OutputPortConfig
@@ -53,7 +54,13 @@ trait PortCompletedHandler {
       ctx: AsyncRPCContext
   ): Future[EmptyReturn] = {
     controllerInterface
-      .controllerInitiateQueryStatistics(QueryStatisticsRequest(scala.Seq(ctx.sender)), CONTROLLER)
+      .controllerInitiateQueryStatistics(
+        QueryStatisticsRequest(
+          scala.Seq(ctx.sender),
+          StatisticsUpdateTarget.BOTH_UI_AND_PERSISTENCE
+        ),
+        CONTROLLER
+      )
       .map { _ =>
         val globalPortId = GlobalPortIdentity(
           VirtualIdentityUtils.getPhysicalOpId(ctx.sender),

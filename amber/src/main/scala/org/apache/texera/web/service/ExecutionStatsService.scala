@@ -28,7 +28,14 @@ import org.apache.texera.amber.core.tuple.Tuple
 import org.apache.texera.amber.core.workflow.WorkflowContext
 import org.apache.texera.amber.core.workflowruntimestate.FatalErrorType.EXECUTION_FAILURE
 import org.apache.texera.amber.core.workflowruntimestate.WorkflowFatalError
-import org.apache.texera.amber.engine.architecture.controller._
+import org.apache.texera.amber.engine.architecture.controller.{
+  ExecutionStateUpdate,
+  ExecutionStatsUpdate,
+  FatalError,
+  RuntimeStatisticsPersist,
+  WorkerAssignmentUpdate,
+  WorkflowRecoveryStatus
+}
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.WorkflowAggregatedState
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.WorkflowAggregatedState.{
   COMPLETED,
@@ -177,12 +184,20 @@ class ExecutionStatsService(
   }
 
   private[this] def registerCallbackOnWorkflowStatsUpdate(): Unit = {
+    // Register callback for UI updates (UI state store update only, no persistence)
     addSubscription(
       client
         .registerCallback[ExecutionStatsUpdate]((evt: ExecutionStatsUpdate) => {
           stateStore.statsStore.updateState { statsStore =>
             statsStore.withOperatorInfo(evt.operatorMetrics)
           }
+        })
+    )
+
+    // Register callback for statistics persistence (persistence only, no UI update)
+    addSubscription(
+      client
+        .registerCallback[RuntimeStatisticsPersist]((evt: RuntimeStatisticsPersist) => {
           metricsPersistThread.execute(() => {
             storeRuntimeStatistics(computeStatsDiff(evt.operatorMetrics))
             lastPersistedMetrics = evt.operatorMetrics
