@@ -24,6 +24,8 @@ import edu.uci.ics.amber.core.virtualidentity.OperatorIdentity
 import edu.uci.ics.amber.core.workflow._
 import edu.uci.ics.amber.engine.architecture.controller.Workflow
 import edu.uci.ics.texera.web.model.websocket.request.LogicalPlanPojo
+import sttp.client3.{HttpURLConnectionBackend, UriContext, basicRequest}
+import sttp.model.MediaType
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -72,6 +74,38 @@ class WorkflowCompiler(
                 }
 
               val internalLinks = subPlan.getUpstreamPhysicalLinks(physicalOp.id)
+
+              if (physicalOp.isPythonBased) {
+                val code = physicalOp.getCode
+
+
+                val backend = HttpURLConnectionBackend()
+                // Use ujson to build and serialize JSON safely
+                val json = ujson.Obj(
+                  "code" -> code
+                )
+
+                try {
+                  val request = basicRequest
+                    .post(uri"http://localhost:9999/compile")
+                    .contentType(MediaType.ApplicationJson)
+                    .body(json.render())
+
+                  val response = request.send(backend)
+                  println(response)
+
+
+                  response.body match {
+                    case Left(value) => physicalOp.setCode(code)
+                    case Right(value) => physicalOp.setCode(value)
+                  }
+                } catch {
+                  case e: Exception =>
+                    physicalOp.setCode(code)
+                }
+
+
+              }
 
               // Add the operator to the physical plan
               physicalPlan = physicalPlan.addOperator(physicalOp.propagateSchema())

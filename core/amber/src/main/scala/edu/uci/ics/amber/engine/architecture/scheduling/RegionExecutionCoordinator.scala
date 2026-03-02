@@ -19,35 +19,16 @@
 
 package edu.uci.ics.amber.engine.architecture.scheduling
 
-import com.twitter.util.Future
+import com.twitter.util.{Future, Stopwatch, Time}
 import edu.uci.ics.amber.core.storage.DocumentFactory
 import edu.uci.ics.amber.core.storage.VFSURIFactory.decodeURI
 import edu.uci.ics.amber.core.workflow.{GlobalPortIdentity, PhysicalLink, PhysicalOp}
 import edu.uci.ics.amber.engine.architecture.common.{AkkaActorService, ExecutorDeployment}
-import edu.uci.ics.amber.engine.architecture.controller.execution.{
-  OperatorExecution,
-  WorkflowExecution
-}
-import edu.uci.ics.amber.engine.architecture.controller.{
-  ControllerConfig,
-  ExecutionStatsUpdate,
-  WorkerAssignmentUpdate
-}
-import edu.uci.ics.amber.engine.architecture.rpc.controlcommands.{
-  AssignPortRequest,
-  EmptyRequest,
-  InitializeExecutorRequest,
-  LinkWorkersRequest
-}
-import edu.uci.ics.amber.engine.architecture.rpc.controlreturns.{
-  EmptyReturn,
-  WorkflowAggregatedState
-}
-import edu.uci.ics.amber.engine.architecture.scheduling.config.{
-  OperatorConfig,
-  PortConfig,
-  ResourceConfig
-}
+import edu.uci.ics.amber.engine.architecture.controller.execution.{OperatorExecution, WorkflowExecution}
+import edu.uci.ics.amber.engine.architecture.controller.{ControllerConfig, ExecutionStatsUpdate, WorkerAssignmentUpdate}
+import edu.uci.ics.amber.engine.architecture.rpc.controlcommands.{AssignPortRequest, EmptyRequest, InitializeExecutorRequest, LinkWorkersRequest}
+import edu.uci.ics.amber.engine.architecture.rpc.controlreturns.{EmptyReturn, WorkflowAggregatedState}
+import edu.uci.ics.amber.engine.architecture.scheduling.config.{OperatorConfig, PortConfig, ResourceConfig}
 import edu.uci.ics.amber.engine.common.rpc.AsyncRPCClient
 import edu.uci.ics.amber.engine.common.virtualidentity.util.CONTROLLER
 import edu.uci.ics.texera.web.resource.dashboard.user.workflow.WorkflowExecutionsResource
@@ -70,25 +51,23 @@ class RegionExecutionCoordinator(
 
     region.getOperators.foreach(physicalOp => {
       // Check for existing execution for this operator
-      val existOpExecution =
-        workflowExecution.getAllRegionExecutions.exists(_.hasOperatorExecution(physicalOp.id))
+//      val existOpExecution =
+//        workflowExecution.getAllRegionExecutions.exists(_.hasOperatorExecution(physicalOp.id))
 
       // Initialize operator execution, reusing existing execution if available
       val operatorExecution = regionExecution.initOperatorExecution(
         physicalOp.id,
-        if (existOpExecution) Some(workflowExecution.getLatestOperatorExecution(physicalOp.id))
-        else None
+        None
       )
 
       // If no existing execution, build the operator with specified config
-      if (!existOpExecution) {
-        buildOperator(
-          actorService,
-          physicalOp,
-          resourceConfig.operatorConfigs(physicalOp.id),
-          operatorExecution
-        )
-      }
+      println(s"building operator - ${physicalOp.id}")
+      buildOperator(
+        actorService,
+        physicalOp,
+        resourceConfig.operatorConfigs(physicalOp.id),
+        operatorExecution
+      )
     })
 
     // update UI
@@ -121,13 +100,19 @@ class RegionExecutionCoordinator(
         .contains(op.id)
     )
 
+    val elapsed = Stopwatch.start()
     Future(())
-      .flatMap(_ => initExecutors(operatorsToInit, resourceConfig))
-      .flatMap(_ => assignPorts(region))
-      .flatMap(_ => connectChannels(region.getLinks))
-      .flatMap(_ => openOperators(operatorsToInit))
-      .flatMap(_ => sendStarts(region))
-      .unit
+        .flatMap(_ => initExecutors(operatorsToInit, resourceConfig))
+        .flatMap { _ =>
+          // elapsed time (ms) for initExecutors
+          val durMs = elapsed().inMilliseconds
+          println(s"[region=${region.id}] initExecutors finished (${durMs} ms)")
+          assignPorts(region)
+        }
+        .flatMap(_ => connectChannels(region.getLinks))
+        .flatMap(_ => openOperators(operatorsToInit))
+        .flatMap(_ => sendStarts(region))
+        .unit
   }
 
   private def buildOperator(
@@ -199,7 +184,7 @@ class RegionExecutionCoordinator(
               case _ => None
             }
           inputPortMapping ++ outputPortMapping
-        }
+        }.filter(x => region.ports.contains(x._1) || !x._1.input)
         .flatMap {
           case (globalPortId, (storageUri, schema)) =>
             resourceConfig.operatorConfigs(globalPortId.opId).workerConfigs.map(_.workerId).map {
@@ -276,6 +261,7 @@ class RegionExecutionCoordinator(
         .toSeq
     )
   }
+
 
   private def createOutputPortStorageObjects(
       portConfigs: Map[GlobalPortIdentity, PortConfig]

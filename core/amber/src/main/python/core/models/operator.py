@@ -51,18 +51,6 @@ class Operator(ABC):
     def is_source(self, value: bool) -> None:
         self.__internal_is_source = value
 
-    def open(self) -> None:
-        """
-        Open a context of the operator. Usually can be used for loading/initiating some
-        resources, such as a file, a model, or an API client.
-        """
-        pass
-
-    def close(self) -> None:
-        """
-        Close the context of the operator.
-        """
-        pass
 
     def process_state(self, state: State, port: int) -> Optional[State]:
         """
@@ -94,6 +82,12 @@ class Operator(ABC):
         """
         pass
 
+    def open(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
 
 class TupleOperatorV2(Operator):
     """
@@ -101,7 +95,6 @@ class TupleOperatorV2(Operator):
     be provided upon using.
     """
 
-    @abstractmethod
     def process_tuple(self, tuple_: Tuple, port: int) -> Iterator[Optional[TupleLike]]:
         """
         Process an input Tuple from the given link.
@@ -123,11 +116,14 @@ class TupleOperatorV2(Operator):
         """
         yield
 
+    def on_finish_all(self):
+        yield
+
 
 class SourceOperator(TupleOperatorV2):
     __internal_is_source = True
 
-    @abstractmethod
+
     def produce(self) -> Iterator[Union[TupleLike, TableLike, None]]:
         """
         Produce Tuples or Tables. Used by the source operator only.
@@ -206,7 +202,6 @@ class BatchOperator(TupleOperatorV2):
         while len(self.__batch_data[port]) != 0:
             yield from self._process_batch(port)
 
-    @abstractmethod
     def process_batch(self, batch: Batch, port: int) -> Iterator[Optional[BatchLike]]:
         """
         Process an input Batch from the given link. The Batch is represented as a
@@ -238,17 +233,46 @@ class TableOperator(TupleOperatorV2):
 
     def on_finish(self, port: int) -> Iterator[Optional[TableLike]]:
         table = Table(self.__table_data[port])
-        yield from self.process_table(table, port)
+        method_name = 'process_table_' + str(port)
+        process_method = getattr(self, method_name, None)
+        yield from process_method(table)
 
-    @abstractmethod
-    def process_table(self, table: Table, port: int) -> Iterator[Optional[TableLike]]:
-        """
-        Process an input Table from the given link. The Table is represented as a
-        pandas.DataFrame.
+    def on_finish_all(self):
+        sorted_values = [self.__table_data[k] for k in sorted(self.__table_data)]
+        yield from self.process_tables(*sorted_values)
 
-        :param table: Table, a table to be processed.
-        :param port: int, input port index of the current Tuple.
-        :return: Iterator[Optional[TableLike]], producing one TableLike object at a
-            time, or None.
-        """
+    def process_tables(self, *args):
+        yield from iter([])
+
+
+
+class GeneralOperator(Operator):
+    """
+    A general operator that can handle both tuples and states.
+    It is not recommended to use this operator directly, but rather
+    extend it to create a specific operator.
+    """
+    def __init__(self):
+        super().__init__()
+        self.__internal_is_source: bool = True
+        self.TABLE_DATA_INTERNAL: Mapping[int, List[Tuple]] = defaultdict(list)
+
+    def collect(self, tuple_: Tuple, port: int) -> None:
+        self.TABLE_DATA_INTERNAL[port].append(tuple_)
         yield
+
+    def process(self):
+        yield
+
+    def on_finish_all(self):
+        # if self has the "process_tables" method, call it
+        if hasattr(self, "process_tables"):
+            sorted_values = [Table(self.TABLE_DATA_INTERNAL[k]) for k in sorted(
+                self.TABLE_DATA_INTERNAL)]
+            yield from self.process_tables(*sorted_values)
+        else:
+            # otherwise, yield an empty iterator
+            yield from iter([])
+
+
+

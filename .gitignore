@@ -125,3 +125,17 @@ values-*.yaml    # Any environment-specific value overrides
 # Ignore nested node modules
 **/node_modules/
 **/package-lock.json
+
+# Local frontend build/cache artifacts (top-level frontend workspace)
+frontend/.angular/
+frontend/.nx/
+frontend/dist/
+frontend/dist-server/
+frontend/tmp/
+frontend/out-tsc/
+frontend/src/environments/version.ts
+frontend/.pnp.*
+frontend/.yarn/install-state.gz
+
+# Local amber debug artifact
+amber/physicalPlan.json

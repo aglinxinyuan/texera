@@ -1,0 +1,22 @@
+{
+  "cuts_used_lines": [
+    3,
+    4
+  ],
+  "filtered_cut_lines": [
+    3,
+    4
+  ],
+  "import_statements": [
+    "import pandas as pd"
+  ],
+  "num_args": 3,
+  "operator_class": "import pandas as pd\n\nfrom pytexera import *\nclass Operator(UDFGeneralOperator):\n    def process_table_0(self, df1: pd.DataFrame, df2: pd.DataFrame):\n        self.left = pd.merge(df1, df2, on='id', how='inner')\n        yield None\n    def process_table_1(self):\n        self.left['score'] = self.left['a'] + self.left['b']\n        yield None\n    def process_table_2(self, df3: pd.DataFrame):\n        self.final = pd.merge(self.left, df3, on='id', how='inner')\n        yield self.final[['id', 'score', 'label']]\n",
+  "operator_class_sha256": "3578763863bfdebe559b6df8474114a7881b4edeec9f0bfe9352b61c7c1666f7",
+  "ranked_cut_lines": [
+    5,
+    3,
+    4,
+    2
+  ]
+}

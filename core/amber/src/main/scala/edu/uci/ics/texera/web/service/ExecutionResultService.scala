@@ -374,15 +374,6 @@ class ExecutionResultService(
               }
 
               if (StorageConfig.resultStorageMode == ICEBERG && !hasSingleSnapshot) {
-                val layerName = physicalPlan.operators
-                  .filter(physicalOp =>
-                    physicalOp.id.logicalOpId == opId &&
-                      physicalOp.outputPorts.keys.forall(outputPortId => !outputPortId.internal)
-                  ) // TODO: Remove layerName and use GlobalPortIdentity for storage URIs
-                  .headOption match {
-                  case Some(physicalOp: PhysicalOp) => physicalOp.id.layerName
-                  case None                         => "main"
-                }
                 val storageUri = WorkflowExecutionsResource
                   .getResultUriByLogicalPortId(
                     executionId,
@@ -395,13 +386,6 @@ class ExecutionResultService(
                   val opStorage = DocumentFactory.openDocument(storageUri.get)._1
 
                   allTableStats(opId.id) = opStorage.getTableStatistics
-                  WorkflowExecutionsResource.updateResultSize(
-                    executionId,
-                    globalPortIdOption.get,
-                    opStorage.getTotalFileSize
-                  )
-                  WorkflowExecutionsResource.updateRuntimeStatsSize(executionId)
-                  WorkflowExecutionsResource.updateConsoleMessageSize(executionId, opId)
                 }
               }
           }

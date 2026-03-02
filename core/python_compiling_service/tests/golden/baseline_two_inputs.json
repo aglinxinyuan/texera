@@ -1,0 +1,11 @@
+{
+  "cuts_used_lines": [],
+  "filtered_cut_lines": [],
+  "import_statements": [
+    "import pandas as pd"
+  ],
+  "num_args": 2,
+  "operator_class": "from pytexera import *\nimport pandas as pd\n\nclass Operator(UDFGeneralOperator):\n    def process_tables(self, df1: pd.DataFrame, df2: pd.DataFrame):\n        merged = pd.merge(df1, df2, on='id', how='inner')\n        merged['score'] = merged['x'] * merged['w']\n        yield merged[['id', 'score']]\n",
+  "operator_class_sha256": "7918b440d81ca9da86485c94f8cc4ad2314b2a7557098ca6c8b8783c9bedf7d0",
+  "ranked_cut_lines": []
+}

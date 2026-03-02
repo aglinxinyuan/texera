@@ -20,12 +20,35 @@
 package edu.uci.ics.amber.engine.architecture.scheduling.config
 
 import edu.uci.ics.amber.core.workflow.PhysicalOp
-import edu.uci.ics.amber.engine.common.AmberConfig
+import edu.uci.ics.amber.engine.common.{AmberConfig, Utils}
 import edu.uci.ics.amber.util.VirtualIdentityUtils
 import edu.uci.ics.amber.core.virtualidentity.ActorVirtualIdentity
+import edu.uci.ics.amber.engine.architecture.scheduling.Region
+
+import scala.io.Source
+import scala.util.{Try, Using}
 
 case object WorkerConfig {
-  def generateWorkerConfigs(physicalOp: PhysicalOp): List[WorkerConfig] = {
+
+  private def readPythonWorkerCount(): Int = {
+    Try {
+      Using(
+        Source.fromFile(
+          Utils.amberHomePath
+            .resolve("src")
+            .resolve("main")
+            .resolve("resources")
+            .resolve("python-worker-count.txt")
+            .toString
+        )
+      ) { source =>
+        source.mkString.trim.toInt
+      }.get
+    }.getOrElse(throw new Exception("Failed to read python-worker-count.txt file"))
+  }
+
+  def generateWorkerConfigs(physicalOp: PhysicalOp, region: Region): List[WorkerConfig] = {
+
     val workerCount = if (physicalOp.parallelizable) {
       physicalOp.suggestedWorkerNum match {
         // Keep suggested number of workers
@@ -33,6 +56,8 @@ case object WorkerConfig {
         // If no suggested number, use default value
         case None => AmberConfig.numWorkerPerOperatorByDefault
       }
+    } else if (physicalOp.isPythonBased && region.id.id == 0) {
+      readPythonWorkerCount()
     } else {
       // Non parallelizable operator has only 1 worker
       1
@@ -40,7 +65,11 @@ case object WorkerConfig {
 
     (0 until workerCount).toList.map(idx =>
       WorkerConfig(
-        VirtualIdentityUtils.createWorkerIdentity(physicalOp.workflowId, physicalOp.id, idx)
+        VirtualIdentityUtils.createWorkerIdentity(
+          physicalOp.workflowId,
+          physicalOp.id,
+          (region.id.id * 10000 + idx).toInt
+        )
       )
     )
   }

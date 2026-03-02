@@ -47,7 +47,7 @@ trait QueryWorkerStatisticsHandler {
     val workers = if (msg.filterByWorkers.nonEmpty) {
       msg.filterByWorkers
     } else {
-      cp.workflowExecution.getAllRegionExecutions
+      cp.workflowExecution.getRunningRegionExecutions
         .flatMap(_.getAllOperatorExecutions.map(_._2))
         .flatMap(_.getWorkerIds)
     }
@@ -78,8 +78,9 @@ trait QueryWorkerStatisticsHandler {
             cp.workflowExecution.getAllRegionExecutionsStats
           )
         )
-      )
-    EmptyReturn()
+      ).map{
+      _ => EmptyReturn()
+      }
   }
 
 }

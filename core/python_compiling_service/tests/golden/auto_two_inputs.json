@@ -1,0 +1,23 @@
+{
+  "cuts_used_lines": [
+    4
+  ],
+  "filtered_cut_lines": [
+    4,
+    5,
+    3
+  ],
+  "import_statements": [
+    "import pandas as pd"
+  ],
+  "num_args": 2,
+  "operator_class": "import pandas as pd\n\nfrom pytexera import *\nclass Operator(UDFGeneralOperator):\n    def process_table_0(self, df1: pd.DataFrame, df2: pd.DataFrame):\n        self.filtered: pd.Series = df1[df1['x'] > 0]\n        self.merged = pd.merge(self.filtered, df2, on='id', how='inner')\n        yield None\n    def process_table_1(self):\n        self.merged['score'] = self.merged['x'] * self.merged['w']\n        self.projected = self.merged[['id', 'score']]\n        yield {'projected': self.projected}\n        yield None\n",
+  "operator_class_sha256": "340845ee42d3c7bb25a675347d9979f0d702be300a18beb55579dc98c8df1917",
+  "ranked_cut_lines": [
+    4,
+    5,
+    6,
+    3,
+    2
+  ]
+}

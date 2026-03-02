@@ -20,8 +20,6 @@ from pyarrow.lib import Table
 from core.models import Tuple, ArrowTableTupleProvider, Schema
 from core.models.internal_marker import (
     InternalMarker,
-    StartOfOutputPorts,
-    EndOfOutputPorts,
     EndOfInputPort,
     StartOfInputPort,
 )
@@ -53,6 +51,7 @@ class WorkerPort:
     def __init__(self, schema: Schema):
         self.channels: List[Channel] = list()
         self._schema = schema
+        self.started = False
 
     def add_channel(self, channel: Channel) -> None:
         self.channels.append(channel)
@@ -74,6 +73,7 @@ class InputManager:
         self._channels: Dict[ChannelIdentity, Channel] = dict()
         self._current_channel_id: Optional[ChannelIdentity] = None
         self.started = False
+        self.all_ports_completed = False
 
     def get_all_channel_ids(self) -> Dict["ChannelIdentity", "Channel"].keys:
         return self._channels.keys()
@@ -112,7 +112,6 @@ class InputManager:
         # special case used to yield for source op
         if from_.from_worker_id == InputManager.SOURCE_STARTER:
             yield EndOfInputPort()
-            yield EndOfOutputPorts()
             return
 
         if isinstance(payload, DataFrame):
@@ -128,17 +127,19 @@ class InputManager:
         ].get_schema()
         for field_accessor in ArrowTableTupleProvider(table):
             yield Tuple(
-                {name: field_accessor for name in table.column_names}, schema=schema
+                {name: field_accessor(name) for name in table.column_names},
+                schema=schema
             )
 
     def _process_marker(self, marker: Marker) -> Iterator[InternalMarker]:
         if isinstance(marker, State):
             yield marker
         if isinstance(marker, StartOfInputChannel):
-            if not self.started:
-                yield StartOfOutputPorts()
-            self.started = True
-            yield StartOfInputPort()
+            channel = self._channels[self._current_channel_id]
+            port_id = channel.port_id
+            if not self._ports[port_id].started:
+                self._ports[port_id].started = True
+                yield StartOfInputPort(port_id)
         if isinstance(marker, EndOfInputChannel):
             channel = self._channels[self._current_channel_id]
             channel.complete()
@@ -150,12 +151,9 @@ class InputManager:
                 )
             )
 
-            if port_completed:
-                yield EndOfInputPort()
-
-            all_ports_completed = all(
+            self.all_ports_completed = all(
                 map(lambda port: port.is_completed(), self._ports.values())
             )
 
-            if all_ports_completed:
-                yield EndOfOutputPorts()
+            if port_completed:
+                yield EndOfInputPort()
