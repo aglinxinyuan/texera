@@ -69,7 +69,6 @@ from proto.org.apache.texera.amber.engine.architecture.rpc import (
     EmbeddedControlMessage,
     AsyncRpcContext,
     ControlRequest,
-    IterationCompletedRequest,
 )
 from proto.org.apache.texera.amber.engine.architecture.worker import (
     WorkerState,
@@ -95,29 +94,6 @@ class MainLoop(StoppableQueueBlockingRunnable):
         threading.Thread(
             target=self.data_processor.run, daemon=True, name="data_processor_thread"
         ).start()
-
-    def _attach_loop_start_id(self, output_state: State) -> None:
-        if "LoopStartId" in output_state:
-            return
-        output_state["LoopStartId"] = self.context.worker_id.split("-", 1)[1].rsplit(
-            "-main-0", 1
-        )[0]
-        output_state["LoopStartStateURI"] = state_uri_from_result_uri(
-            self.context.input_manager.get_input_state_result_uri()
-        )
-
-    def _next_iteration(
-        self, executor: LoopEndOperator, controller_interface
-    ) -> None:
-        controller_interface.iteration_completed(
-            IterationCompletedRequest(OperatorIdentity(executor.loop_start_id()))
-        )
-        uri = executor.state["LoopStartStateURI"]
-        del executor.state["LoopStartStateURI"]
-        del executor.state["LoopStartId"]
-        writer = DocumentFactory.create_document(uri, STATE_SCHEMA).writer("0")
-        writer.put_one(serialize_state(executor.state))
-        writer.close()
 
     def complete(self) -> None:
         """
@@ -223,10 +199,6 @@ class MainLoop(StoppableQueueBlockingRunnable):
         output_state = self.context.state_processing_manager.get_output_state()
         self._switch_context()
         if output_state is not None:
-            if isinstance(self.context.executor_manager.executor, LoopEndOperator):
-                self.context.output_manager.reset_output_storage()
-            if isinstance(self.context.executor_manager.executor, LoopStartOperator):
-                self._attach_loop_start_id(output_state)
             for to, batch in self.context.output_manager.emit_state(output_state):
                 self._output_queue.put(
                     DataElement(
@@ -236,7 +208,6 @@ class MainLoop(StoppableQueueBlockingRunnable):
                         payload=batch,
                     )
                 )
-            self.context.output_manager.save_state_to_storage_if_needed(output_state)
 
     def process_tuple_with_udf(self) -> Iterator[Optional[Tuple]]:
         """
