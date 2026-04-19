@@ -17,29 +17,51 @@
  * under the License.
  */
 
-package org.apache.texera.amber.operator.visualization.DotPlot
+package org.apache.texera.amber.operator.visualization.windRoseChart
 
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.JsonSchemaTitle
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
+import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
 import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
 import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
-import org.apache.texera.amber.core.workflow.PortIdentity
+import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
 import org.apache.texera.amber.pybuilder.PythonTemplateBuilder
-
 import javax.validation.constraints.NotNull
 
-class DotPlotOpDesc extends PythonOperatorDescriptor {
+class WindRoseChartOpDesc extends PythonOperatorDescriptor {
 
-  @JsonProperty(value = "Count Attribute", required = true)
-  @JsonSchemaTitle("Count Attribute")
-  @JsonPropertyDescription("the attribute for the counting of the dot plot")
+  @JsonProperty(value = "rColumn", required = true)
+  @JsonSchemaTitle("Radial Values (r)")
+  @JsonPropertyDescription("Numeric values representing magnitude (e.g., frequency)")
   @AutofillAttributeName
-  @NotNull(message = "Count Attribute column cannot be empty")
-  var countAttribute: EncodableString = ""
+  @NotNull(message = "Radial Values (r) column must be selected.")
+  var rColumn: EncodableString = _
+
+  @JsonProperty(value = "thetaColumn", required = true)
+  @JsonSchemaTitle("Angular Values (θ)")
+  @JsonPropertyDescription("Direction or angle categories (e.g., N, NE, E)")
+  @AutofillAttributeName
+  @NotNull(message = "Angular Values (θ) column must be selected.")
+  var thetaColumn: EncodableString = _
+
+  @JsonProperty(value = "colorColumn", required = false)
+  @JsonSchemaTitle("Color Group")
+  @JsonPropertyDescription("Optional grouping column (e.g., wind strength)")
+  @AutofillAttributeName
+  var colorColumn: EncodableString = _
+
+  override def operatorInfo: OperatorInfo =
+    OperatorInfo(
+      userFriendlyName = "Wind Rose Chart",
+      operatorDescription = "Displays wind distribution using a polar bar chart",
+      operatorGroupName = OperatorGroupConstants.VISUALIZATION_SCIENTIFIC_GROUP,
+      inputPorts = List(InputPort()),
+      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+    )
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -47,26 +69,26 @@ class DotPlotOpDesc extends PythonOperatorDescriptor {
     val outputSchema = Schema()
       .add("html-content", AttributeType.STRING)
     Map(operatorInfo.outputPorts.head.id -> outputSchema)
-    Map(operatorInfo.outputPorts.head.id -> outputSchema)
   }
 
-  override def operatorInfo: OperatorInfo =
-    OperatorInfo.forVisualization(
-      "Dot Plot",
-      "Visualize data using a dot plot",
-      OperatorGroupConstants.VISUALIZATION_BASIC_GROUP
-    )
-
   def createPlotlyFigure(): PythonTemplateBuilder = {
+    val colorArg =
+      if (colorColumn != null && colorColumn.nonEmpty)
+        pyb"""
+             |        color=$colorColumn,
+             |"""
+      else
+        pyb""
+
     pyb"""
-       |        table = table.groupby([$countAttribute])[$countAttribute].count().reset_index(name='counts')
-       |        fig = px.strip(table, x='counts', y=$countAttribute, orientation='h', color=$countAttribute,
-       |               color_discrete_sequence=px.colors.qualitative.Dark2)
-       |
-       |        fig.update_traces(marker=dict(size=12, line=dict(width=2, color='DarkSlateGrey')))
-       |
-       |        fig.update_layout(margin=dict(t=0, b=0, l=0, r=0))
-       |"""
+         |        fig = px.bar_polar(
+         |            table,
+         |            r=$rColumn,
+         |            theta=$thetaColumn,
+         |$colorArg
+         |            color_discrete_sequence=px.colors.sequential.Plasma_r
+         |        )
+         |"""
   }
 
   override def generatePythonCode(): String = {
@@ -74,27 +96,29 @@ class DotPlotOpDesc extends PythonOperatorDescriptor {
       pyb"""
          |from pytexera import *
          |
-         |import plotly.express as px
          |import plotly.graph_objects as go
          |import plotly.io
+         |import plotly.express as px
          |
          |class ProcessTableOperator(UDFTableOperator):
          |
-         |    def render_error(self, error_msg):
-         |        return '''<h1>DotPlot is not available.</h1>
-         |                  <p>Reasons are: {} </p>
+         |    # Generate custom error message as html string
+         |    def render_error(self, error_msg) -> str:
+         |        return '''<h1>Wind Rose chart is not available.</h1>
+         |                  <p>Reason is: {} </p>
          |               '''.format(error_msg)
          |
          |    @overrides
          |    def process_table(self, table: Table, port: int) -> Iterator[Optional[TableLike]]:
          |        if table.empty:
-         |            yield {'html-content': self.render_error("Input table is empty.")}
+         |            yield {'html-content': self.render_error("input table is empty.")}
+         |            return
+         |        if table[$rColumn].dtype.kind not in ["i", "u", "f"]:
+         |            yield {'html-content': self.render_error(
+         |                "Radial column must be numeric (int, float, or double)."
+         |            )}
          |            return
          |        ${createPlotlyFigure()}
-         |        if table.empty:
-         |            yield {'html-content': self.render_error("No valid rows left (every row has at least 1 missing value).")}
-         |            return
-         |        # convert fig to html content
          |        html = plotly.io.to_html(fig, include_plotlyjs='cdn', auto_play=False)
          |        yield {'html-content': html}
          |"""
