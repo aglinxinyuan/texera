@@ -32,6 +32,7 @@ from core.architecture.handlers.actorcommand.credit_update_handler import (
 )
 from core.models import (
     DataFrame,
+    Tuple,
     StateFrame,
 )
 from core.models.internal_queue import (
@@ -40,8 +41,8 @@ from core.models.internal_queue import (
     InternalQueue,
     ECMElement,
 )
-from core.models.state import State
 from core.proxy import ProxyServer
+from core.models.state import STATE_SCHEMA, deserialize_state
 from core.util import Stoppable, get_one_of
 from core.util.runnable.runnable import Runnable
 from proto.org.apache.texera.amber.engine.architecture.rpc import EmbeddedControlMessage
@@ -96,7 +97,17 @@ class NetworkReceiver(Runnable, Stoppable):
                 "Data",
                 lambda _: DataFrame(table),
                 "State",
-                lambda _: StateFrame(State(table)),
+                lambda _: StateFrame(
+                    deserialize_state(
+                        Tuple(
+                            {
+                                name: table[name][0].as_py()
+                                for name in STATE_SCHEMA.get_attr_names()
+                            },
+                            schema=STATE_SCHEMA,
+                        )
+                    )
+                ),
                 "ECM",
                 lambda _: EmbeddedControlMessage().parse(table["payload"][0].as_py()),
             )

@@ -38,8 +38,15 @@ from core.models.internal_queue import (
     ECMElement,
     InternalQueueElement,
 )
-from core.models.state import State
+from core.models.operator import LoopEndOperator, LoopStartOperator
+from core.models.state import (
+    State,
+    STATE_SCHEMA,
+    serialize_state,
+    state_uri_from_result_uri,
+)
 from core.runnables.data_processor import DataProcessor
+from core.storage.document_factory import DocumentFactory
 from core.util import StoppableQueueBlockingRunnable, get_one_of
 from core.util.console_message.timestamp import current_time_in_local_timezone
 from core.util.customized_queue.queue_base import QueueElement
@@ -48,6 +55,7 @@ from proto.org.apache.texera.amber.core import (
     PortIdentity,
     ChannelIdentity,
     EmbeddedControlMessageIdentity,
+    OperatorIdentity,
 )
 from proto.org.apache.texera.amber.engine.architecture.rpc import (
     ConsoleMessage,
@@ -61,6 +69,7 @@ from proto.org.apache.texera.amber.engine.architecture.rpc import (
     EmbeddedControlMessage,
     AsyncRpcContext,
     ControlRequest,
+    IterationCompletedRequest,
 )
 from proto.org.apache.texera.amber.engine.architecture.worker import (
     WorkerState,
@@ -87,6 +96,29 @@ class MainLoop(StoppableQueueBlockingRunnable):
             target=self.data_processor.run, daemon=True, name="data_processor_thread"
         ).start()
 
+    def _attach_loop_start_id(self, output_state: State) -> None:
+        if "LoopStartId" in output_state:
+            return
+        output_state["LoopStartId"] = self.context.worker_id.split("-", 1)[1].rsplit(
+            "-main-0", 1
+        )[0]
+        output_state["LoopStartStateURI"] = state_uri_from_result_uri(
+            self.context.input_manager.get_input_state_result_uri()
+        )
+
+    def _next_iteration(
+        self, executor: LoopEndOperator, controller_interface
+    ) -> None:
+        controller_interface.iteration_completed(
+            IterationCompletedRequest(OperatorIdentity(executor.loop_start_id()))
+        )
+        uri = executor.state["LoopStartStateURI"]
+        del executor.state["LoopStartStateURI"]
+        del executor.state["LoopStartId"]
+        writer = DocumentFactory.create_document(uri, STATE_SCHEMA).writer("0")
+        writer.put_one(serialize_state(executor.state))
+        writer.close()
+
     def complete(self) -> None:
         """
         Complete the DataProcessor, marking state to COMPLETED, and notify the
@@ -94,12 +126,15 @@ class MainLoop(StoppableQueueBlockingRunnable):
         """
         # flush the buffered console prints
         self._check_and_report_console_messages(force_flush=True)
-        self.context.executor_manager.executor.close()
+        controller_interface = self._async_rpc_client.controller_stub()
+        executor = self.context.executor_manager.executor
+        if isinstance(executor, LoopEndOperator) and executor.condition():
+            self._next_iteration(executor, controller_interface)
+        executor.close()
         # stop the data processing thread
         self.data_processor.stop()
         self.context.state_manager.transit_to(WorkerState.COMPLETED)
         self.context.statistics_manager.update_total_execution_time(time.time_ns())
-        controller_interface = self._async_rpc_client.controller_stub()
         controller_interface.worker_execution_completed(EmptyRequest())
         self.context.close()
 
@@ -188,6 +223,10 @@ class MainLoop(StoppableQueueBlockingRunnable):
         output_state = self.context.state_processing_manager.get_output_state()
         self._switch_context()
         if output_state is not None:
+            if isinstance(self.context.executor_manager.executor, LoopEndOperator):
+                self.context.output_manager.reset_output_storage()
+            if isinstance(self.context.executor_manager.executor, LoopStartOperator):
+                self._attach_loop_start_id(output_state)
             for to, batch in self.context.output_manager.emit_state(output_state):
                 self._output_queue.put(
                     DataElement(
@@ -197,6 +236,7 @@ class MainLoop(StoppableQueueBlockingRunnable):
                         payload=batch,
                     )
                 )
+            self.context.output_manager.save_state_to_storage_if_needed(output_state)
 
     def process_tuple_with_udf(self) -> Iterator[Optional[Tuple]]:
         """
@@ -241,6 +281,7 @@ class MainLoop(StoppableQueueBlockingRunnable):
 
     def _process_state(self, state_: State) -> None:
         self.context.state_processing_manager.current_input_state = state_
+        self._switch_context()
         self.process_input_state()
         self._check_and_process_control()
 
@@ -329,7 +370,7 @@ class MainLoop(StoppableQueueBlockingRunnable):
 
             if ecm.ecm_type != EmbeddedControlMessageType.NO_ALIGNMENT:
                 self.context.pause_manager.resume(PauseType.ECM_PAUSE)
-
+            self._switch_context()
             if self.context.tuple_processing_manager.current_internal_marker:
                 {
                     StartChannel: self._process_start_channel,

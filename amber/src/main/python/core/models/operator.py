@@ -108,14 +108,12 @@ class Operator(ABC):
     def process_state(self, state: State, port: int) -> Optional[State]:
         """
         Process an input State from the given link.
-        The default implementation is to pass the State to all downstream operators
-        if the State has pass_to_all_downstream set to True.
+        The default implementation is to pass the State to downstream operators.
         :param state: State, a State from an input port to be processed.
         :param port: int, input port index of the current exhausted port.
         :return: State, producing one State object
         """
-        if state.passToAllDownstream:
-            return state
+        return state
 
     def produce_state_on_start(self, port: int) -> State:
         """
@@ -293,3 +291,35 @@ class TableOperator(TupleOperatorV2):
             time, or None.
         """
         yield
+
+
+class LoopStartOperator(TableOperator):
+    @overrides.final
+    def process_state(self, state: State, port: int) -> Optional[State]:
+        if "LoopStartStateURI" in state:
+            state["loop_counter"] += 1
+            return state
+        self.state.update(state)
+        return None
+
+    @overrides.final
+    def produce_state_on_finish(self, port: int) -> State:
+        from pickle import dumps
+
+        self.state["table"] = dumps(Table(self._TableOperator__table_data[port]))
+        return dict(self.state)
+
+
+class LoopEndOperator(TableOperator):
+    @overrides.final
+    def process_table(self, table: Table, port: int) -> Iterator[Optional[TableLike]]:
+        yield table
+
+    @abstractmethod
+    def condition(self) -> None:
+        pass
+
+    def loop_start_id(self) -> str:
+        del self.state["table"]
+        del self.state["output"]
+        return self.state["LoopStartId"]

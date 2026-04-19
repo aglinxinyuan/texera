@@ -21,6 +21,7 @@ package org.apache.texera.amber.engine.architecture.scheduling
 
 import org.apache.pekko.pattern.gracefulStop
 import com.twitter.util.{Duration => TwitterDuration, Future, JavaTimer, Return, Throw, Timer}
+import org.apache.texera.amber.core.state.State
 import org.apache.texera.amber.core.storage.DocumentFactory
 import org.apache.texera.amber.core.storage.VFSURIFactory.decodeURI
 import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
@@ -181,6 +182,8 @@ class RegionExecutionCoordinator(
                 val actorRef = actorRefService.getActorRef(workerId)
                 // Remove the actorRef so that no other actors can find the worker and send messages.
                 actorRefService.removeActorRef(workerId)
+                asyncRPCClient.inputGateway.removeControlChannel(workerId)
+                asyncRPCClient.outputGateway.removeControlChannel(workerId)
                 gracefulStop(actorRef, ScalaDuration(5, TimeUnit.SECONDS)).asTwitter()
               }
           }.toSeq
@@ -209,14 +212,15 @@ class RegionExecutionCoordinator(
       regionExecution: RegionExecution,
       attempt: Int = 1
   ): Future[Unit] = {
-    terminateWorkers(regionExecution).rescue { case err =>
-      logger.warn(
-        s"Failed to terminate region ${region.id.id} on attempt $attempt. Retrying in ${killRetryDelay.inMilliseconds} ms.",
-        err
-      )
-      Future
-        .sleep(killRetryDelay)(killRetryTimer)
-        .flatMap(_ => terminateWorkersWithRetry(regionExecution, attempt + 1))
+    terminateWorkers(regionExecution).rescue {
+      case err =>
+        logger.warn(
+          s"Failed to terminate region ${region.id.id} on attempt $attempt. Retrying in ${killRetryDelay.inMilliseconds} ms.",
+          err
+        )
+        Future
+          .sleep(killRetryDelay)(killRetryTimer)
+          .flatMap(_ => terminateWorkersWithRetry(regionExecution, attempt + 1))
     }
   }
 
@@ -563,12 +567,30 @@ class RegionExecutionCoordinator(
     portConfigs.foreach {
       case (outputPortId, portConfig) =>
         val storageUriToAdd = portConfig.storageURI
+        val stateUriToAdd = State.stateUriFromResultUri(storageUriToAdd)
         val (_, eid, _, _) = decodeURI(storageUriToAdd)
         val schemaOptional =
           region.getOperator(outputPortId.opId).outputPorts(outputPortId.portId)._3
         val schema =
           schemaOptional.getOrElse(throw new IllegalStateException("Schema is missing"))
-        DocumentFactory.createDocument(storageUriToAdd, schema)
+        if (region.getOperators.exists(_.id.logicalOpId.id.startsWith("LoopEnd-operator-"))) {
+          try {
+            DocumentFactory.openDocument(storageUriToAdd)
+          } catch {
+            case _: Exception =>
+              DocumentFactory.createDocument(storageUriToAdd, schema)
+          }
+          try {
+            DocumentFactory.openDocument(stateUriToAdd)
+          } catch {
+            case _: Exception =>
+              DocumentFactory.createDocument(stateUriToAdd, State.schema)
+          }
+        } else {
+          DocumentFactory.createDocument(storageUriToAdd, schema)
+          DocumentFactory.createDocument(stateUriToAdd, State.schema)
+        }
+
         WorkflowExecutionsResource.insertOperatorPortResultUri(
           eid = eid,
           globalPortId = outputPortId,
