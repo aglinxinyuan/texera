@@ -115,7 +115,7 @@ class Operator(ABC):
         """
         return state
 
-    def produce_state_on_start(self, port: int) -> State:
+    def produce_state_on_start(self, port: int) -> Optional[State]:
         """
         Produce a State when the given link started.
 
@@ -124,7 +124,7 @@ class Operator(ABC):
         """
         pass
 
-    def produce_state_on_finish(self, port: int) -> State:
+    def produce_state_on_finish(self, port: int) -> Optional[State]:
         """
         Produce a State after the input port is exhausted.
 
