@@ -135,8 +135,8 @@ class WorkflowExecutionCoordinator(
     regionExecutionCoordinators.values.exists(!_.isCompleted)
   }
 
-  def loopBack(loopStartId: OperatorIdentity): Unit = {
-    workflowScheduler.schedule.loopBack(loopStartId)
+  def goto(OpId: OperatorIdentity): Unit = {
+    workflowScheduler.schedule.loopBack(OpId)
   }
 
 }

@@ -41,7 +41,7 @@ trait NextIterationHandler {
       msg: NextIterationRequest,
       ctx: AsyncRPCContext
   ): Future[EmptyReturn] = {
-    cp.workflowExecutionCoordinator.loopBack(msg.loopStartId)
+    cp.workflowExecutionCoordinator.goto(msg.loopStartId)
     EmptyReturn()
   }
 }
