@@ -46,6 +46,7 @@ message ControlRequest {
     PortCompletedRequest portCompletedRequest = 9;
     WorkerStateUpdatedRequest workerStateUpdatedRequest = 10;
     LinkWorkersRequest linkWorkersRequest = 11;
+    NextIterationRequest nextIterationRequest = 12;
 
     // request for worker
     AddInputChannelRequest addInputChannelRequest = 50;
@@ -278,4 +279,8 @@ enum StatisticsUpdateTarget {
 message QueryStatisticsRequest{
   repeated core.ActorVirtualIdentity filterByWorkers = 1;
   StatisticsUpdateTarget updateTarget = 2;
+}
+
+message NextIterationRequest{
+  core.OperatorIdentity LoopStartId = 1 [(scalapb.field).no_box = true];
 }

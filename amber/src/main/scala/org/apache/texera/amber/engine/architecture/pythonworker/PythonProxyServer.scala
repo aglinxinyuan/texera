@@ -128,7 +128,10 @@ private class AmberProducer(
     dataHeader.payloadType match {
       case "State" =>
         assert(root.getRowCount == 1)
-        outputPort.sendTo(to, StateFrame(State(Some(ArrowUtils.getTexeraTuple(0, root)))))
+        outputPort.sendTo(
+          to,
+          StateFrame(State.deserialize(ArrowUtils.getTexeraTuple(0, root)))
+        )
       case "ECM" =>
         assert(root.getRowCount == 1)
         outputPort.sendTo(

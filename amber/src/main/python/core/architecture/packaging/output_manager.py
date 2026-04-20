@@ -17,6 +17,7 @@
 
 import threading
 import typing
+import uuid
 from collections import OrderedDict
 from itertools import chain
 from loguru import logger
@@ -43,7 +44,12 @@ from core.architecture.sendsemantics.round_robin_partitioner import (
 )
 from core.models import Tuple, Schema, StateFrame
 from core.models.payload import DataPayload, DataFrame
-from core.models.state import State
+from core.models.state import (
+    State,
+    STATE_SCHEMA,
+    serialize_state,
+    state_uri_from_result_uri,
+)
 from core.storage.document_factory import DocumentFactory
 from core.storage.runnables.port_storage_writer import (
     PortStorageWriter,
@@ -87,6 +93,8 @@ class OutputManager:
             PortIdentity, typing.Tuple[Queue, PortStorageWriter, Thread]
         ] = dict()
 
+        self._storage_uris: typing.Dict[PortIdentity, str] = dict()
+
     def is_missing_output_ports(self):
         """
         This method is only used for ensuring correct region execution.
@@ -126,6 +134,7 @@ class OutputManager:
         Create a separate thread for saving output tuples of a port
         to storage in batch.
         """
+        self._storage_uris[port_id] = storage_uri
         document, _ = DocumentFactory.open_document(storage_uri)
         buffered_item_writer = document.writer(str(get_worker_index(self.worker_id)))
         writer_queue = Queue()
@@ -170,6 +179,31 @@ class OutputManager:
             self._port_storage_writers[port_id][0].put(
                 PortStorageWriterElement(data_tuple=tuple_)
             )
+
+    def save_state_to_storage_if_needed(self, state: State, port_id=None) -> None:
+        if port_id is None:
+            uris = self._storage_uris.values()
+        elif port_id in self._storage_uris:
+            uris = [self._storage_uris[port_id]]
+        else:
+            return
+
+        for uri in uris:
+            state_uri = state_uri_from_result_uri(uri)
+            try:
+                document = DocumentFactory.open_document(state_uri)[0]
+            except ValueError:
+                document = DocumentFactory.create_document(state_uri, STATE_SCHEMA)
+            writer = document.writer(str(uuid.uuid4()))
+            writer.put_one(serialize_state(state))
+            writer.close()
+
+    def reset_output_storage(self) -> None:
+        port_id = self.get_port_ids()[0]
+        storage_uri = self._storage_uris[port_id]
+        self.close_port_storage_writers()
+        DocumentFactory.create_document(storage_uri, self._ports[port_id].get_schema())
+        self.set_up_port_storage_writer(port_id, storage_uri)
 
     def close_port_storage_writers(self) -> None:
         """
@@ -248,7 +282,7 @@ class OutputManager:
                         receiver,
                         (
                             StateFrame(payload)
-                            if isinstance(payload, State)
+                            if isinstance(payload, dict)
                             else self.tuple_to_frame(payload)
                         ),
                     )

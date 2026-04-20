@@ -19,6 +19,8 @@
 
 package org.apache.texera.amber.engine.architecture.scheduling
 
+import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
+
 case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterator[Set[Region]] {
   private var currentLevel = levelSets.keys.minOption.getOrElse(0)
 
@@ -31,4 +33,13 @@ case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterat
     currentLevel += 1
     regions
   }
+
+  def loopBack(loopStartId: OperatorIdentity): Unit =
+    levelSets
+      .collectFirst {
+        case (level, regions)
+            if regions.exists(_.getOperators.exists(_.id.logicalOpId == loopStartId)) =>
+          level
+      }
+      .foreach(currentLevel = _)
 }

@@ -173,3 +173,6 @@ class InputManager:
             yield Tuple(
                 {name: field_accessor for name in table.column_names}, schema=schema
             )
+
+    def get_input_state_result_uri(self):
+        return next(iter(self._input_port_mat_reader_runnables.values()))[0].uri

@@ -23,7 +23,6 @@ from .. import (
     worker as _worker__,
 )
 
-
 if TYPE_CHECKING:
     import grpclib.server
     from betterproto.grpc.grpclib_client import MetadataLike
@@ -101,6 +100,9 @@ class ControlRequest(betterproto.Message):
     )
     link_workers_request: "LinkWorkersRequest" = betterproto.message_field(
         11, group="sealed_value"
+    )
+    next_iteration_request: "NextIterationRequest" = betterproto.message_field(
+        12, group="sealed_value"
     )
     add_input_channel_request: "AddInputChannelRequest" = betterproto.message_field(
         50, group="sealed_value"
@@ -395,6 +397,11 @@ class QueryStatisticsRequest(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class NextIterationRequest(betterproto.Message):
+    loop_start_id: "___core__.OperatorIdentity" = betterproto.message_field(1)
+
+
+@dataclass(eq=False, repr=False)
 class ControlReturn(betterproto.Message):
     """The generic return message"""
 
@@ -522,6 +529,280 @@ class WorkerStateResponse(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class WorkerMetricsResponse(betterproto.Message):
     metrics: "_worker__.WorkerMetrics" = betterproto.message_field(1)
+
+
+class ControllerServiceStub(betterproto.ServiceStub):
+    async def retrieve_workflow_state(
+        self,
+        empty_request: "EmptyRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "RetrieveWorkflowStateResponse":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetrieveWorkflowState",
+            empty_request,
+            RetrieveWorkflowStateResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def propagate_embedded_control_message(
+        self,
+        propagate_embedded_control_message_request: "PropagateEmbeddedControlMessageRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "PropagateEmbeddedControlMessageResponse":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PropagateEmbeddedControlMessage",
+            propagate_embedded_control_message_request,
+            PropagateEmbeddedControlMessageResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def take_global_checkpoint(
+        self,
+        take_global_checkpoint_request: "TakeGlobalCheckpointRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "TakeGlobalCheckpointResponse":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/TakeGlobalCheckpoint",
+            take_global_checkpoint_request,
+            TakeGlobalCheckpointResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def debug_command(
+        self,
+        debug_command_request: "DebugCommandRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/DebugCommand",
+            debug_command_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def evaluate_python_expression(
+        self,
+        evaluate_python_expression_request: "EvaluatePythonExpressionRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EvaluatePythonExpressionResponse":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/EvaluatePythonExpression",
+            evaluate_python_expression_request,
+            EvaluatePythonExpressionResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def console_message_triggered(
+        self,
+        console_message_triggered_request: "ConsoleMessageTriggeredRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ConsoleMessageTriggered",
+            console_message_triggered_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def port_completed(
+        self,
+        port_completed_request: "PortCompletedRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PortCompleted",
+            port_completed_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def start_workflow(
+        self,
+        empty_request: "EmptyRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "StartWorkflowResponse":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/StartWorkflow",
+            empty_request,
+            StartWorkflowResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def resume_workflow(
+        self,
+        empty_request: "EmptyRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ResumeWorkflow",
+            empty_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def pause_workflow(
+        self,
+        empty_request: "EmptyRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PauseWorkflow",
+            empty_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def worker_state_updated(
+        self,
+        worker_state_updated_request: "WorkerStateUpdatedRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerStateUpdated",
+            worker_state_updated_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def worker_execution_completed(
+        self,
+        empty_request: "EmptyRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerExecutionCompleted",
+            empty_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def next_iteration(
+        self,
+        next_iteration_request: "NextIterationRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/NextIteration",
+            next_iteration_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def link_workers(
+        self,
+        link_workers_request: "LinkWorkersRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/LinkWorkers",
+            link_workers_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def controller_initiate_query_statistics(
+        self,
+        query_statistics_request: "QueryStatisticsRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ControllerInitiateQueryStatistics",
+            query_statistics_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def retry_workflow(
+        self,
+        retry_workflow_request: "RetryWorkflowRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "EmptyReturn":
+        return await self._unary_unary(
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetryWorkflow",
+            retry_workflow_request,
+            EmptyReturn,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
 
 
 class RpcTesterStub(betterproto.ServiceStub):
@@ -1038,261 +1319,301 @@ class WorkerServiceStub(betterproto.ServiceStub):
         )
 
 
-class ControllerServiceStub(betterproto.ServiceStub):
+class ControllerServiceBase(ServiceBase):
+
     async def retrieve_workflow_state(
-        self,
-        empty_request: "EmptyRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, empty_request: "EmptyRequest"
     ) -> "RetrieveWorkflowStateResponse":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetrieveWorkflowState",
-            empty_request,
-            RetrieveWorkflowStateResponse,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def propagate_embedded_control_message(
         self,
         propagate_embedded_control_message_request: "PropagateEmbeddedControlMessageRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
     ) -> "PropagateEmbeddedControlMessageResponse":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PropagateEmbeddedControlMessage",
-            propagate_embedded_control_message_request,
-            PropagateEmbeddedControlMessageResponse,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def take_global_checkpoint(
-        self,
-        take_global_checkpoint_request: "TakeGlobalCheckpointRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, take_global_checkpoint_request: "TakeGlobalCheckpointRequest"
     ) -> "TakeGlobalCheckpointResponse":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/TakeGlobalCheckpoint",
-            take_global_checkpoint_request,
-            TakeGlobalCheckpointResponse,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def debug_command(
-        self,
-        debug_command_request: "DebugCommandRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, debug_command_request: "DebugCommandRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/DebugCommand",
-            debug_command_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def evaluate_python_expression(
-        self,
-        evaluate_python_expression_request: "EvaluatePythonExpressionRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, evaluate_python_expression_request: "EvaluatePythonExpressionRequest"
     ) -> "EvaluatePythonExpressionResponse":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/EvaluatePythonExpression",
-            evaluate_python_expression_request,
-            EvaluatePythonExpressionResponse,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def console_message_triggered(
-        self,
-        console_message_triggered_request: "ConsoleMessageTriggeredRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, console_message_triggered_request: "ConsoleMessageTriggeredRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ConsoleMessageTriggered",
-            console_message_triggered_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def port_completed(
-        self,
-        port_completed_request: "PortCompletedRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, port_completed_request: "PortCompletedRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PortCompleted",
-            port_completed_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def start_workflow(
-        self,
-        empty_request: "EmptyRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, empty_request: "EmptyRequest"
     ) -> "StartWorkflowResponse":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/StartWorkflow",
-            empty_request,
-            StartWorkflowResponse,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
-    async def resume_workflow(
-        self,
-        empty_request: "EmptyRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
-    ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ResumeWorkflow",
-            empty_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+    async def resume_workflow(self, empty_request: "EmptyRequest") -> "EmptyReturn":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
-    async def pause_workflow(
-        self,
-        empty_request: "EmptyRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
-    ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PauseWorkflow",
-            empty_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+    async def pause_workflow(self, empty_request: "EmptyRequest") -> "EmptyReturn":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def worker_state_updated(
-        self,
-        worker_state_updated_request: "WorkerStateUpdatedRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, worker_state_updated_request: "WorkerStateUpdatedRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerStateUpdated",
-            worker_state_updated_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def worker_execution_completed(
-        self,
-        empty_request: "EmptyRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, empty_request: "EmptyRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerExecutionCompleted",
-            empty_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def next_iteration(
+        self, next_iteration_request: "NextIterationRequest"
+    ) -> "EmptyReturn":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def link_workers(
-        self,
-        link_workers_request: "LinkWorkersRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, link_workers_request: "LinkWorkersRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/LinkWorkers",
-            link_workers_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def controller_initiate_query_statistics(
-        self,
-        query_statistics_request: "QueryStatisticsRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, query_statistics_request: "QueryStatisticsRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ControllerInitiateQueryStatistics",
-            query_statistics_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def retry_workflow(
-        self,
-        retry_workflow_request: "RetryWorkflowRequest",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None
+        self, retry_workflow_request: "RetryWorkflowRequest"
     ) -> "EmptyReturn":
-        return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetryWorkflow",
-            retry_workflow_request,
-            EmptyReturn,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
-        )
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def __rpc_retrieve_workflow_state(
+        self,
+        stream: "grpclib.server.Stream[EmptyRequest, RetrieveWorkflowStateResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.retrieve_workflow_state(request)
+        await stream.send_message(response)
+
+    async def __rpc_propagate_embedded_control_message(
+        self,
+        stream: "grpclib.server.Stream[PropagateEmbeddedControlMessageRequest, PropagateEmbeddedControlMessageResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.propagate_embedded_control_message(request)
+        await stream.send_message(response)
+
+    async def __rpc_take_global_checkpoint(
+        self,
+        stream: "grpclib.server.Stream[TakeGlobalCheckpointRequest, TakeGlobalCheckpointResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.take_global_checkpoint(request)
+        await stream.send_message(response)
+
+    async def __rpc_debug_command(
+        self, stream: "grpclib.server.Stream[DebugCommandRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.debug_command(request)
+        await stream.send_message(response)
+
+    async def __rpc_evaluate_python_expression(
+        self,
+        stream: "grpclib.server.Stream[EvaluatePythonExpressionRequest, EvaluatePythonExpressionResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.evaluate_python_expression(request)
+        await stream.send_message(response)
+
+    async def __rpc_console_message_triggered(
+        self,
+        stream: "grpclib.server.Stream[ConsoleMessageTriggeredRequest, EmptyReturn]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.console_message_triggered(request)
+        await stream.send_message(response)
+
+    async def __rpc_port_completed(
+        self, stream: "grpclib.server.Stream[PortCompletedRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.port_completed(request)
+        await stream.send_message(response)
+
+    async def __rpc_start_workflow(
+        self, stream: "grpclib.server.Stream[EmptyRequest, StartWorkflowResponse]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.start_workflow(request)
+        await stream.send_message(response)
+
+    async def __rpc_resume_workflow(
+        self, stream: "grpclib.server.Stream[EmptyRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.resume_workflow(request)
+        await stream.send_message(response)
+
+    async def __rpc_pause_workflow(
+        self, stream: "grpclib.server.Stream[EmptyRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.pause_workflow(request)
+        await stream.send_message(response)
+
+    async def __rpc_worker_state_updated(
+        self, stream: "grpclib.server.Stream[WorkerStateUpdatedRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.worker_state_updated(request)
+        await stream.send_message(response)
+
+    async def __rpc_worker_execution_completed(
+        self, stream: "grpclib.server.Stream[EmptyRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.worker_execution_completed(request)
+        await stream.send_message(response)
+
+    async def __rpc_next_iteration(
+        self, stream: "grpclib.server.Stream[NextIterationRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.next_iteration(request)
+        await stream.send_message(response)
+
+    async def __rpc_link_workers(
+        self, stream: "grpclib.server.Stream[LinkWorkersRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.link_workers(request)
+        await stream.send_message(response)
+
+    async def __rpc_controller_initiate_query_statistics(
+        self, stream: "grpclib.server.Stream[QueryStatisticsRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.controller_initiate_query_statistics(request)
+        await stream.send_message(response)
+
+    async def __rpc_retry_workflow(
+        self, stream: "grpclib.server.Stream[RetryWorkflowRequest, EmptyReturn]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.retry_workflow(request)
+        await stream.send_message(response)
+
+    def __mapping__(self) -> Dict[str, grpclib.const.Handler]:
+        return {
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetrieveWorkflowState": grpclib.const.Handler(
+                self.__rpc_retrieve_workflow_state,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                EmptyRequest,
+                RetrieveWorkflowStateResponse,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PropagateEmbeddedControlMessage": grpclib.const.Handler(
+                self.__rpc_propagate_embedded_control_message,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                PropagateEmbeddedControlMessageRequest,
+                PropagateEmbeddedControlMessageResponse,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/TakeGlobalCheckpoint": grpclib.const.Handler(
+                self.__rpc_take_global_checkpoint,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                TakeGlobalCheckpointRequest,
+                TakeGlobalCheckpointResponse,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/DebugCommand": grpclib.const.Handler(
+                self.__rpc_debug_command,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                DebugCommandRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/EvaluatePythonExpression": grpclib.const.Handler(
+                self.__rpc_evaluate_python_expression,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                EvaluatePythonExpressionRequest,
+                EvaluatePythonExpressionResponse,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ConsoleMessageTriggered": grpclib.const.Handler(
+                self.__rpc_console_message_triggered,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                ConsoleMessageTriggeredRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PortCompleted": grpclib.const.Handler(
+                self.__rpc_port_completed,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                PortCompletedRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/StartWorkflow": grpclib.const.Handler(
+                self.__rpc_start_workflow,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                EmptyRequest,
+                StartWorkflowResponse,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ResumeWorkflow": grpclib.const.Handler(
+                self.__rpc_resume_workflow,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                EmptyRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PauseWorkflow": grpclib.const.Handler(
+                self.__rpc_pause_workflow,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                EmptyRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerStateUpdated": grpclib.const.Handler(
+                self.__rpc_worker_state_updated,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                WorkerStateUpdatedRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerExecutionCompleted": grpclib.const.Handler(
+                self.__rpc_worker_execution_completed,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                EmptyRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/NextIteration": grpclib.const.Handler(
+                self.__rpc_next_iteration,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                NextIterationRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/LinkWorkers": grpclib.const.Handler(
+                self.__rpc_link_workers,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                LinkWorkersRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ControllerInitiateQueryStatistics": grpclib.const.Handler(
+                self.__rpc_controller_initiate_query_statistics,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                QueryStatisticsRequest,
+                EmptyReturn,
+            ),
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetryWorkflow": grpclib.const.Handler(
+                self.__rpc_retry_workflow,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                RetryWorkflowRequest,
+                EmptyReturn,
+            ),
+        }
 
 
 class RpcTesterBase(ServiceBase):
@@ -1816,285 +2137,6 @@ class WorkerServiceBase(ServiceBase):
                 self.__rpc_no_operation,
                 grpclib.const.Cardinality.UNARY_UNARY,
                 EmptyRequest,
-                EmptyReturn,
-            ),
-        }
-
-
-class ControllerServiceBase(ServiceBase):
-
-    async def retrieve_workflow_state(
-        self, empty_request: "EmptyRequest"
-    ) -> "RetrieveWorkflowStateResponse":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def propagate_embedded_control_message(
-        self,
-        propagate_embedded_control_message_request: "PropagateEmbeddedControlMessageRequest",
-    ) -> "PropagateEmbeddedControlMessageResponse":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def take_global_checkpoint(
-        self, take_global_checkpoint_request: "TakeGlobalCheckpointRequest"
-    ) -> "TakeGlobalCheckpointResponse":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def debug_command(
-        self, debug_command_request: "DebugCommandRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def evaluate_python_expression(
-        self, evaluate_python_expression_request: "EvaluatePythonExpressionRequest"
-    ) -> "EvaluatePythonExpressionResponse":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def console_message_triggered(
-        self, console_message_triggered_request: "ConsoleMessageTriggeredRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def port_completed(
-        self, port_completed_request: "PortCompletedRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def start_workflow(
-        self, empty_request: "EmptyRequest"
-    ) -> "StartWorkflowResponse":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def resume_workflow(self, empty_request: "EmptyRequest") -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def pause_workflow(self, empty_request: "EmptyRequest") -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def worker_state_updated(
-        self, worker_state_updated_request: "WorkerStateUpdatedRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def worker_execution_completed(
-        self, empty_request: "EmptyRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def link_workers(
-        self, link_workers_request: "LinkWorkersRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def controller_initiate_query_statistics(
-        self, query_statistics_request: "QueryStatisticsRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def retry_workflow(
-        self, retry_workflow_request: "RetryWorkflowRequest"
-    ) -> "EmptyReturn":
-        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
-
-    async def __rpc_retrieve_workflow_state(
-        self,
-        stream: "grpclib.server.Stream[EmptyRequest, RetrieveWorkflowStateResponse]",
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.retrieve_workflow_state(request)
-        await stream.send_message(response)
-
-    async def __rpc_propagate_embedded_control_message(
-        self,
-        stream: "grpclib.server.Stream[PropagateEmbeddedControlMessageRequest, PropagateEmbeddedControlMessageResponse]",
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.propagate_embedded_control_message(request)
-        await stream.send_message(response)
-
-    async def __rpc_take_global_checkpoint(
-        self,
-        stream: "grpclib.server.Stream[TakeGlobalCheckpointRequest, TakeGlobalCheckpointResponse]",
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.take_global_checkpoint(request)
-        await stream.send_message(response)
-
-    async def __rpc_debug_command(
-        self, stream: "grpclib.server.Stream[DebugCommandRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.debug_command(request)
-        await stream.send_message(response)
-
-    async def __rpc_evaluate_python_expression(
-        self,
-        stream: "grpclib.server.Stream[EvaluatePythonExpressionRequest, EvaluatePythonExpressionResponse]",
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.evaluate_python_expression(request)
-        await stream.send_message(response)
-
-    async def __rpc_console_message_triggered(
-        self,
-        stream: "grpclib.server.Stream[ConsoleMessageTriggeredRequest, EmptyReturn]",
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.console_message_triggered(request)
-        await stream.send_message(response)
-
-    async def __rpc_port_completed(
-        self, stream: "grpclib.server.Stream[PortCompletedRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.port_completed(request)
-        await stream.send_message(response)
-
-    async def __rpc_start_workflow(
-        self, stream: "grpclib.server.Stream[EmptyRequest, StartWorkflowResponse]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.start_workflow(request)
-        await stream.send_message(response)
-
-    async def __rpc_resume_workflow(
-        self, stream: "grpclib.server.Stream[EmptyRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.resume_workflow(request)
-        await stream.send_message(response)
-
-    async def __rpc_pause_workflow(
-        self, stream: "grpclib.server.Stream[EmptyRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.pause_workflow(request)
-        await stream.send_message(response)
-
-    async def __rpc_worker_state_updated(
-        self, stream: "grpclib.server.Stream[WorkerStateUpdatedRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.worker_state_updated(request)
-        await stream.send_message(response)
-
-    async def __rpc_worker_execution_completed(
-        self, stream: "grpclib.server.Stream[EmptyRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.worker_execution_completed(request)
-        await stream.send_message(response)
-
-    async def __rpc_link_workers(
-        self, stream: "grpclib.server.Stream[LinkWorkersRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.link_workers(request)
-        await stream.send_message(response)
-
-    async def __rpc_controller_initiate_query_statistics(
-        self, stream: "grpclib.server.Stream[QueryStatisticsRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.controller_initiate_query_statistics(request)
-        await stream.send_message(response)
-
-    async def __rpc_retry_workflow(
-        self, stream: "grpclib.server.Stream[RetryWorkflowRequest, EmptyReturn]"
-    ) -> None:
-        request = await stream.recv_message()
-        response = await self.retry_workflow(request)
-        await stream.send_message(response)
-
-    def __mapping__(self) -> Dict[str, grpclib.const.Handler]:
-        return {
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetrieveWorkflowState": grpclib.const.Handler(
-                self.__rpc_retrieve_workflow_state,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                EmptyRequest,
-                RetrieveWorkflowStateResponse,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PropagateEmbeddedControlMessage": grpclib.const.Handler(
-                self.__rpc_propagate_embedded_control_message,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                PropagateEmbeddedControlMessageRequest,
-                PropagateEmbeddedControlMessageResponse,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/TakeGlobalCheckpoint": grpclib.const.Handler(
-                self.__rpc_take_global_checkpoint,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                TakeGlobalCheckpointRequest,
-                TakeGlobalCheckpointResponse,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/DebugCommand": grpclib.const.Handler(
-                self.__rpc_debug_command,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                DebugCommandRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/EvaluatePythonExpression": grpclib.const.Handler(
-                self.__rpc_evaluate_python_expression,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                EvaluatePythonExpressionRequest,
-                EvaluatePythonExpressionResponse,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ConsoleMessageTriggered": grpclib.const.Handler(
-                self.__rpc_console_message_triggered,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                ConsoleMessageTriggeredRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PortCompleted": grpclib.const.Handler(
-                self.__rpc_port_completed,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                PortCompletedRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/StartWorkflow": grpclib.const.Handler(
-                self.__rpc_start_workflow,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                EmptyRequest,
-                StartWorkflowResponse,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ResumeWorkflow": grpclib.const.Handler(
-                self.__rpc_resume_workflow,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                EmptyRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/PauseWorkflow": grpclib.const.Handler(
-                self.__rpc_pause_workflow,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                EmptyRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerStateUpdated": grpclib.const.Handler(
-                self.__rpc_worker_state_updated,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                WorkerStateUpdatedRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/WorkerExecutionCompleted": grpclib.const.Handler(
-                self.__rpc_worker_execution_completed,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                EmptyRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/LinkWorkers": grpclib.const.Handler(
-                self.__rpc_link_workers,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                LinkWorkersRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/ControllerInitiateQueryStatistics": grpclib.const.Handler(
-                self.__rpc_controller_initiate_query_statistics,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                QueryStatisticsRequest,
-                EmptyReturn,
-            ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/RetryWorkflow": grpclib.const.Handler(
-                self.__rpc_retry_workflow,
-                grpclib.const.Cardinality.UNARY_UNARY,
-                RetryWorkflowRequest,
                 EmptyReturn,
             ),
         }

@@ -32,7 +32,7 @@ class WorkflowScheduler(
     actorId: ActorVirtualIdentity
 ) extends java.io.Serializable {
   var physicalPlan: PhysicalPlan = _
-  private var schedule: Schedule = _
+  var schedule: Schedule = _
 
   def getSchedule: Schedule = schedule
 
@@ -53,5 +53,7 @@ class WorkflowScheduler(
   }
 
   def getNextRegions: Set[Region] = if (!schedule.hasNext) Set() else schedule.next()
+
+  def hasPendingRegions: Boolean = schedule != null && schedule.hasNext
 
 }
