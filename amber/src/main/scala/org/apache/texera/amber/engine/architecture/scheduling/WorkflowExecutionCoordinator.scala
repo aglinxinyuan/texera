@@ -136,7 +136,7 @@ class WorkflowExecutionCoordinator(
   }
 
   def goto(OpId: OperatorIdentity): Unit = {
-    workflowScheduler.schedule.loopBack(OpId)
+    workflowScheduler.schedule.goto(OpId)
   }
 
 }

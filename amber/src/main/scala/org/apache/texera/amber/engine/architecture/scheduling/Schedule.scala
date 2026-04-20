@@ -34,11 +34,11 @@ case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterat
     regions
   }
 
-  def loopBack(loopStartId: OperatorIdentity): Unit =
+  def goto(opId: OperatorIdentity): Unit =
     levelSets
       .collectFirst {
         case (level, regions)
-            if regions.exists(_.getOperators.exists(_.id.logicalOpId == loopStartId)) =>
+            if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
           level
       }
       .foreach(currentLevel = _)
