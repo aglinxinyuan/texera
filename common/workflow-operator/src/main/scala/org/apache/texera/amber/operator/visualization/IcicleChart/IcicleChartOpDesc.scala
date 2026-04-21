@@ -22,12 +22,14 @@ package org.apache.texera.amber.operator.visualization.IcicleChart
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.{JsonSchemaInject, JsonSchemaTitle}
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
 import org.apache.texera.amber.operator.visualization.hierarchychart.HierarchySection
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder
 
 import javax.validation.constraints.{NotEmpty, NotNull}
 
@@ -55,7 +57,7 @@ class IcicleChartOpDesc extends PythonOperatorDescriptor {
   @JsonPropertyDescription("the value associated with the size of each sector in the chart")
   @AutofillAttributeName
   @NotNull(message = "Value column cannot be empty")
-  var value: String = ""
+  var value: EncodableString = ""
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -67,38 +69,36 @@ class IcicleChartOpDesc extends PythonOperatorDescriptor {
   }
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Icicle Chart",
       "Visualize hierarchical data from root to leaves",
-      OperatorGroupConstants.VISUALIZATION_BASIC_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_BASIC_GROUP
     )
 
   private def getIcicleAttributesInPython: String =
-    hierarchy.map(_.attributeName).mkString("'", "','", "'")
+    hierarchy.map(c => pyb"${c.attributeName}").mkString(",")
 
-  def manipulateTable(): String = {
+  def manipulateTable(): PythonTemplateBuilder = {
     val attributes = getIcicleAttributesInPython
-    s"""
-       |        table['$value'] = table[table['$value'] > 0]['$value'] # remove non-positive numbers from the data
+    pyb"""
+       |        table[$value] = table[table[$value] > 0][$value] # remove non-positive numbers from the data
        |        table.dropna(subset = [$attributes], inplace = True) #remove missing values
-       |""".stripMargin
+       |"""
   }
 
-  def createPlotlyFigure(): String = {
+  def createPlotlyFigure(): PythonTemplateBuilder = {
     assert(hierarchy.nonEmpty)
     val attributes = getIcicleAttributesInPython
-    s"""
-       |        fig = px.icicle(table, path=[$attributes], values='$value',
-       |                                                               color='$value', hover_data=[$attributes],
+    pyb"""
+       |        fig = px.icicle(table, path=[$attributes], values=$value,
+       |                                                               color=$value, hover_data=[$attributes],
        |                                                               color_continuous_scale='RdBu')
-       |""".stripMargin
+       |"""
   }
 
   override def generatePythonCode(): String = {
     val finalCode =
-      s"""
+      pyb"""
          |from pytexera import *
          |
          |import plotly.express as px
@@ -128,8 +128,8 @@ class IcicleChartOpDesc extends PythonOperatorDescriptor {
          |        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
          |        html = plotly.io.to_html(fig, include_plotlyjs='cdn', auto_play=False)
          |        yield {'html-content': html}
-         |""".stripMargin
-    finalCode
+         |"""
+    finalCode.encode
   }
 
 }

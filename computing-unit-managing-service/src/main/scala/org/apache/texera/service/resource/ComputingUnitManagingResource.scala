@@ -60,14 +60,17 @@ import scala.annotation.unused
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 
 object ComputingUnitManagingResource {
-  private lazy val context: DSLContext = SqlServer
-    .getInstance()
-    .createDSLContext()
+  private def context: DSLContext =
+    SqlServer
+      .getInstance()
+      .createDSLContext()
 
   // Environment variables passed to the created computing unit(pod)
   private lazy val computingUnitEnvironmentVariables: Map[String, Any] = Map(
     // Variables for saving results to Iceberg
     EnvironmentalVariable.ENV_ICEBERG_CATALOG_TYPE -> StorageConfig.icebergCatalogType,
+    EnvironmentalVariable.ENV_ICEBERG_CATALOG_REST_URI -> StorageConfig.icebergRESTCatalogUri,
+    EnvironmentalVariable.ENV_ICEBERG_CATALOG_REST_WAREHOUSE_NAME -> StorageConfig.icebergRESTCatalogWarehouseName,
     EnvironmentalVariable.ENV_ICEBERG_CATALOG_POSTGRES_URI_WITHOUT_SCHEME -> StorageConfig.icebergPostgresCatalogUriWithoutScheme,
     EnvironmentalVariable.ENV_ICEBERG_CATALOG_POSTGRES_USERNAME -> StorageConfig.icebergPostgresCatalogUsername,
     EnvironmentalVariable.ENV_ICEBERG_CATALOG_POSTGRES_PASSWORD -> StorageConfig.icebergPostgresCatalogPassword,
@@ -79,6 +82,11 @@ object ComputingUnitManagingResource {
     // LakeFS endpoint is passed to CU to make CU work in dev mode(using localhost & using default LakeFS credentials)
     // LakeFS credentials should NOT be passed to CU
     EnvironmentalVariable.ENV_LAKEFS_ENDPOINT -> StorageConfig.lakefsEndpoint,
+    // S3 variables are passed to CU for R UDF large binary support
+    EnvironmentalVariable.ENV_S3_ENDPOINT -> StorageConfig.s3Endpoint,
+    EnvironmentalVariable.ENV_S3_REGION -> StorageConfig.s3Region,
+    EnvironmentalVariable.ENV_S3_AUTH_USERNAME -> StorageConfig.s3Username,
+    EnvironmentalVariable.ENV_S3_AUTH_PASSWORD -> StorageConfig.s3Password,
     EnvironmentalVariable.ENV_FILE_SERVICE_GET_PRESIGNED_URL_ENDPOINT -> EnvironmentalVariable
       .get(EnvironmentalVariable.ENV_FILE_SERVICE_GET_PRESIGNED_URL_ENDPOINT)
       .get,
@@ -95,6 +103,9 @@ object ComputingUnitManagingResource {
       .get,
     EnvironmentalVariable.ENV_MAX_WORKFLOW_WEBSOCKET_REQUEST_PAYLOAD_SIZE_KB -> EnvironmentalVariable
       .get(EnvironmentalVariable.ENV_MAX_WORKFLOW_WEBSOCKET_REQUEST_PAYLOAD_SIZE_KB)
+      .get,
+    EnvironmentalVariable.ENV_AUTH_JWT_SECRET -> EnvironmentalVariable
+      .get(EnvironmentalVariable.ENV_AUTH_JWT_SECRET)
       .get
   )
 

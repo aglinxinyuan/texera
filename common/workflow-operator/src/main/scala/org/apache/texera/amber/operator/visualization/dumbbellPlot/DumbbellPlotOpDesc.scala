@@ -22,11 +22,13 @@ package org.apache.texera.amber.operator.visualization.dumbbellPlot
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.{JsonSchemaInject, JsonSchemaTitle}
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder
 
 import java.util
 import javax.validation.constraints.{NotBlank, NotNull}
@@ -48,33 +50,33 @@ class DumbbellPlotOpDesc extends PythonOperatorDescriptor {
   @JsonPropertyDescription("the name of the category column")
   @AutofillAttributeName
   @NotNull(message = "Category Column Name cannot be empty")
-  var categoryColumnName: String = ""
+  var categoryColumnName: EncodableString = ""
 
   @JsonProperty(value = "dumbbellStartValue", required = true)
   @JsonSchemaTitle("Dumbbell Start Value")
   @JsonPropertyDescription("the start point value of each dumbbell")
   @NotBlank(message = "Dumbbell Start Value cannot be empty")
-  var dumbbellStartValue: String = ""
+  var dumbbellStartValue: EncodableString = ""
 
   @JsonProperty(value = "dumbbellEndValue", required = true)
   @JsonSchemaTitle("Dumbbell End Value")
   @JsonPropertyDescription("the end value of each dumbbell")
   @NotBlank(message = "Dumbbell End Value cannot be empty")
-  var dumbbellEndValue: String = ""
+  var dumbbellEndValue: EncodableString = ""
 
   @JsonProperty(value = "measurementColumnName", required = true)
   @JsonSchemaTitle("Measurement Column Name")
   @JsonPropertyDescription("the name of the measurement column")
   @AutofillAttributeName
   @NotNull(message = "Measurement Column Name cannot be empty")
-  var measurementColumnName: String = ""
+  var measurementColumnName: EncodableString = ""
 
   @JsonProperty(value = "comparedColumnName", required = true)
   @JsonSchemaTitle("Compared Column Name")
   @JsonPropertyDescription("the column name that is being compared")
   @AutofillAttributeName
   @NotNull(message = "Compared Column Name cannot be empty")
-  var comparedColumnName: String = ""
+  var comparedColumnName: EncodableString = ""
 
   @JsonProperty(value = "dots", required = false)
   var dots: util.List[DumbbellDotConfig] = _
@@ -82,7 +84,7 @@ class DumbbellPlotOpDesc extends PythonOperatorDescriptor {
   @JsonProperty(value = "showLegends", required = false)
   @JsonSchemaTitle("Show Legends?")
   @JsonPropertyDescription("whether show legends in the graph")
-  var showLegends: Boolean = false;
+  var showLegends: Boolean = false
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -94,65 +96,63 @@ class DumbbellPlotOpDesc extends PythonOperatorDescriptor {
   }
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Dumbbell Plot",
       "Visualize data in a Dumbbell Plots. A dumbbell plots (also known as a lollipop chart) is typically used to compare two distinct values or time points for the same entity.",
-      OperatorGroupConstants.VISUALIZATION_BASIC_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_BASIC_GROUP
     )
 
-  def createPlotlyDumbbellLineFigure(): String = {
-    val dumbbellValues = dumbbellStartValue + ", " + dumbbellEndValue
+  def createPlotlyDumbbellLineFigure(): PythonTemplateBuilder = {
+    val dumbbellValues = pyb"$dumbbellStartValue, $dumbbellEndValue"
     var showLegendsOption = "showlegend=False"
     if (showLegends) {
       showLegendsOption = "showlegend=True"
     }
-    s"""
+    pyb"""
        |
-       |        entityNames = list(table['${comparedColumnName}'].unique())
+       |        entityNames = list(table[$comparedColumnName].unique())
        |        entityNames = sorted(entityNames, reverse=True)
-       |        categoryValues = [${dumbbellValues}]
-       |        filtered_table = table[(table['${comparedColumnName}'].isin(entityNames)) &
-       |                    (table['${categoryColumnName}'].isin(categoryValues))]
+       |        categoryValues = [$dumbbellValues]
+       |        filtered_table = table[(table[$comparedColumnName].isin(entityNames)) &
+       |                    (table[$categoryColumnName].isin(categoryValues))]
        |
        |        # Create the dumbbell line using Plotly
        |        fig = go.Figure()
        |        color = 'black'
        |        for entity in entityNames:
-       |          entity_data = filtered_table[filtered_table['${comparedColumnName}'] == entity]
-       |          fig.add_trace(go.Scatter(x=entity_data['${measurementColumnName}'],
+       |          entity_data = filtered_table[filtered_table[$comparedColumnName] == entity]
+       |          fig.add_trace(go.Scatter(x=entity_data[$measurementColumnName],
        |                             y=[entity]*len(entity_data),
        |                             mode='lines',
        |                             name=entity,
        |                             line=dict(color=color)))
        |
-       |          fig.update_layout(xaxis_title="${measurementColumnName}",
-       |                  yaxis_title="${comparedColumnName}",
+       |          fig.update_layout(xaxis_title=$measurementColumnName,
+       |                  yaxis_title=$comparedColumnName,
        |                  yaxis=dict(categoryorder='array', categoryarray=entityNames),
-       |                  ${showLegendsOption}
+       |                  $showLegendsOption
        |                  )
-       |""".stripMargin
+       |"""
   }
 
-  def addPlotlyDots(): String = {
+  def addPlotlyDots(): PythonTemplateBuilder = {
 
     var dotColumnNames = ""
     if (dots != null && dots.size() != 0) {
       dotColumnNames = dots.asScala
         .map { dot =>
-          s"'${dot.dotValue}'"
+          pyb"${dot.dotValue}"
         }
         .mkString(",")
     }
 
-    s"""
-       |        dotColumnNames = [${dotColumnNames}]
+    pyb"""
+       |        dotColumnNames = [$dotColumnNames]
        |        if len(dotColumnNames) > 0:
        |          for dotColumn in dotColumnNames:
        |              # Extract dot data for each entity
        |              for entity in entityNames:
-       |                  entity_dot_data = filtered_table[filtered_table['${comparedColumnName}'] == entity]
+       |                  entity_dot_data = filtered_table[filtered_table[$comparedColumnName] == entity]
        |                  # Extract X and Y values for the dot
        |                  x_values = entity_dot_data[dotColumn].values
        |                  y_values = [entity] * len(x_values)
@@ -161,11 +161,11 @@ class DumbbellPlotOpDesc extends PythonOperatorDescriptor {
        |                                         mode='markers',
        |                                         name=entity + ' ' + dotColumn,
        |                                         marker=dict(color='black', size=5)))  # Customize color and size as needed
-       |""".stripMargin
+       |"""
   }
 
   override def generatePythonCode(): String = {
-    s"""
+    pyb"""
        |from pytexera import *
        |
        |import plotly.express as px
@@ -191,6 +191,6 @@ class DumbbellPlotOpDesc extends PythonOperatorDescriptor {
        |        html = plotly.io.to_html(fig, include_plotlyjs='cdn', auto_play=False)
        |        yield {'html-content': html}
        |
-       |""".stripMargin
+       |""".encode
   }
 }

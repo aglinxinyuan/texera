@@ -121,15 +121,15 @@ object AttributeTypeUtils extends Serializable {
   ): Any = {
     if (field == null) return null
     attributeType match {
-      case AttributeType.INTEGER    => parseInteger(field, force)
-      case AttributeType.LONG       => parseLong(field, force)
-      case AttributeType.DOUBLE     => parseDouble(field)
-      case AttributeType.BOOLEAN    => parseBoolean(field)
-      case AttributeType.TIMESTAMP  => parseTimestamp(field)
-      case AttributeType.STRING     => field.toString
-      case AttributeType.BINARY     => field
-      case AttributeType.BIG_OBJECT => new BigObject(field.toString)
-      case AttributeType.ANY | _    => field
+      case AttributeType.INTEGER      => parseInteger(field, force)
+      case AttributeType.LONG         => parseLong(field, force)
+      case AttributeType.DOUBLE       => parseDouble(field)
+      case AttributeType.BOOLEAN      => parseBoolean(field)
+      case AttributeType.TIMESTAMP    => parseTimestamp(field)
+      case AttributeType.STRING       => field.toString
+      case AttributeType.BINARY       => field
+      case AttributeType.LARGE_BINARY => new LargeBinary(field.toString)
+      case AttributeType.ANY | _      => field
     }
   }
 
@@ -201,10 +201,15 @@ object AttributeTypeUtils extends Serializable {
   def parseTimestamp(fieldValue: Any): Timestamp = {
     val attempt: Try[Timestamp] = Try {
       fieldValue match {
-        case str: String          => new Timestamp(DateParserUtils.parseDate(str.trim).getTime)
-        case long: java.lang.Long => new Timestamp(long)
-        case timestamp: Timestamp => timestamp
-        case date: java.util.Date => new Timestamp(date.getTime)
+        case str: String                              => new Timestamp(DateParserUtils.parseDate(str.trim).getTime)
+        case long: java.lang.Long                     => new Timestamp(long)
+        case timestamp: Timestamp                     => timestamp
+        case date: java.util.Date                     => new Timestamp(date.getTime)
+        case localDateTime: java.time.LocalDateTime   => Timestamp.valueOf(localDateTime)
+        case instant: java.time.Instant               => Timestamp.from(instant)
+        case offsetDateTime: java.time.OffsetDateTime => Timestamp.from(offsetDateTime.toInstant)
+        case zonedDateTime: java.time.ZonedDateTime   => Timestamp.from(zonedDateTime.toInstant)
+        case localDate: java.time.LocalDate           => Timestamp.valueOf(localDate.atStartOfDay())
         // Integer, Double, Boolean, Binary are considered to be illegal here.
         case _ =>
           throw new AttributeTypeException(
@@ -384,8 +389,8 @@ object AttributeTypeUtils extends Serializable {
       case AttributeType.INTEGER   => tryParseInteger(fieldValue)
       case AttributeType.TIMESTAMP => tryParseTimestamp(fieldValue)
       case AttributeType.BINARY    => tryParseString()
-      case AttributeType.BIG_OBJECT =>
-        AttributeType.BIG_OBJECT // Big objects are never inferred from data
+      case AttributeType.LARGE_BINARY =>
+        AttributeType.LARGE_BINARY // Large binaries are never inferred from data
       case _ => tryParseString()
     }
   }
@@ -504,7 +509,7 @@ object AttributeTypeUtils extends Serializable {
         )
     }
 
-  /** Returns the minimum possible value for a given attribute type. (note Double.MIN_VALUE is > 0).
+  /** Returns the minimum possible value for a given attribute type.
     * For BINARY under lexicographic order, the empty array is the global minimum.
     */
   @throws[UnsupportedOperationException]
@@ -512,7 +517,7 @@ object AttributeTypeUtils extends Serializable {
     attrType match {
       case AttributeType.INTEGER   => java.lang.Integer.valueOf(Integer.MIN_VALUE)
       case AttributeType.LONG      => java.lang.Long.valueOf(java.lang.Long.MIN_VALUE)
-      case AttributeType.DOUBLE    => java.lang.Double.valueOf(java.lang.Double.MIN_VALUE)
+      case AttributeType.DOUBLE    => java.lang.Double.valueOf(java.lang.Double.NEGATIVE_INFINITY)
       case AttributeType.TIMESTAMP => new Timestamp(0L)
       case AttributeType.BINARY    => Array.emptyByteArray
       case _ =>

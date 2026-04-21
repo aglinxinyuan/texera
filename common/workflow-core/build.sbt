@@ -23,7 +23,7 @@ name := "workflow-core"
 organization := "org.apache"
 version := "1.0.0"
 
-scalaVersion := "2.13.12"
+scalaVersion := "2.13.18"
 
 enablePlugins(JavaAppPackaging)
 
@@ -83,7 +83,7 @@ Test / PB.protoSources += PB.externalSourcePath.value
 // Test-related Dependencies
 /////////////////////////////////////////////////////////////////////////////
 
-val testcontainersVersion = "0.43.0"
+val testcontainersVersion = "0.44.1"
 
 libraryDependencies ++= Seq(
   "org.scalamock" %% "scalamock" % "5.2.0" % Test,                  // ScalaMock
@@ -115,6 +115,7 @@ libraryDependencies ++= Seq(
 /////////////////////////////////////////////////////////////////////////////
 // Arrow related
 val arrowVersion = "14.0.1"
+val nettyVersion = "4.1.96.Final"
 val arrowDependencies = Seq(
   // https://mvnrepository.com/artifact/org.apache.arrow/flight-grpc
   "org.apache.arrow" % "flight-grpc" % arrowVersion,
@@ -123,6 +124,26 @@ val arrowDependencies = Seq(
 )
 
 libraryDependencies ++= arrowDependencies
+
+// Netty dependency overrides to ensure compatibility with Arrow
+// Arrow 14.0.1 requires Netty 4.1.96.Final for proper memory allocation
+// The chunkSize field issue occurs when Netty versions are mismatched
+dependencyOverrides ++= Seq(
+  "io.netty" % "netty-all" % nettyVersion,
+  "io.netty" % "netty-buffer" % nettyVersion,
+  "io.netty" % "netty-codec" % nettyVersion,
+  "io.netty" % "netty-codec-http" % nettyVersion,
+  "io.netty" % "netty-codec-http2" % nettyVersion,
+  "io.netty" % "netty-codec-socks" % nettyVersion,
+  "io.netty" % "netty-common" % nettyVersion,
+  "io.netty" % "netty-handler" % nettyVersion,
+  "io.netty" % "netty-handler-proxy" % nettyVersion,
+  "io.netty" % "netty-resolver" % nettyVersion,
+  "io.netty" % "netty-transport" % nettyVersion,
+  "io.netty" % "netty-transport-classes-epoll" % nettyVersion,
+  "io.netty" % "netty-transport-native-epoll" % nettyVersion,
+  "io.netty" % "netty-transport-native-unix-common" % nettyVersion
+)
 
 /////////////////////////////////////////////////////////////////////////////
 // Iceberg-related Dependencies
@@ -147,6 +168,10 @@ libraryDependencies ++= Seq(
     excludeJacksonModule
   ),
   "org.apache.iceberg" % "iceberg-data" % "1.7.1" excludeAll(
+    excludeJackson,
+    excludeJacksonModule
+  ),
+  "org.apache.iceberg" % "iceberg-aws" % "1.7.1" excludeAll(
     excludeJackson,
     excludeJacksonModule
   ),
@@ -191,6 +216,13 @@ libraryDependencies ++= Seq(
   "software.amazon.awssdk" % "s3" % "2.29.51" excludeAll(
     ExclusionRule(organization = "io.netty")
   ),
-  "software.amazon.awssdk" % "auth" % "2.29.51",
-  "software.amazon.awssdk" % "regions" % "2.29.51",
+  "software.amazon.awssdk" % "auth" % "2.29.51" excludeAll(
+    ExclusionRule(organization = "io.netty")
+  ),
+  "software.amazon.awssdk" % "regions" % "2.29.51" excludeAll(
+    ExclusionRule(organization = "io.netty")
+  ),
+  "software.amazon.awssdk" % "sts" % "2.29.51" excludeAll(
+    ExclusionRule(organization = "io.netty")
+  ),
 )

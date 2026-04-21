@@ -21,8 +21,9 @@ package org.apache.texera.amber.operator.visualization.histogram2d
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.JsonSchemaTitle
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
@@ -33,23 +34,23 @@ class Histogram2DOpDesc extends PythonOperatorDescriptor {
   @JsonSchemaTitle("X Column")
   @JsonPropertyDescription("Numeric column for the X axis bins.")
   @AutofillAttributeName
-  var xColumn = ""
+  var xColumn: EncodableString = ""
 
   @JsonProperty(required = true)
   @JsonSchemaTitle("Y Column")
   @JsonPropertyDescription("Numeric column for the Y axis bins.")
   @AutofillAttributeName
-  var yColumn = ""
+  var yColumn: EncodableString = ""
 
   @JsonProperty(required = true, defaultValue = "10")
   @JsonSchemaTitle("X Bins")
   @JsonPropertyDescription("Number of bins along the X axis (Default: 10)")
-  var xBins: Int = _
+  var xBins: Int = 10
 
   @JsonProperty(required = true, defaultValue = "10")
   @JsonSchemaTitle("Y Bins")
   @JsonPropertyDescription("Number of bins along the Y axis (Default: 10)")
-  var yBins: Int = _
+  var yBins: Int = 10
 
   @JsonProperty(required = false, defaultValue = "density")
   @JsonSchemaTitle("Normalization")
@@ -59,12 +60,10 @@ class Histogram2DOpDesc extends PythonOperatorDescriptor {
   var normalize: NormalizationType = NormalizationType.DENSITY
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Histogram2D",
       "Displays a bivariate histogram as a density heatmap",
-      OperatorGroupConstants.VISUALIZATION_STATISTICAL_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_STATISTICAL_GROUP
     )
 
   override def getOutputSchemas(
@@ -79,9 +78,9 @@ class Histogram2DOpDesc extends PythonOperatorDescriptor {
     assert(yBins > 0, s"Y Bins must be > 0, but got $yBins")
 
     val normArg =
-      s"histnorm='${normalize.getValue}',"
+      pyb"histnorm=${normalize.getValue},"
 
-    s"""
+    pyb"""
        |from pytexera import *
        |import plotly.express as px
        |import plotly.io
@@ -98,23 +97,23 @@ class Histogram2DOpDesc extends PythonOperatorDescriptor {
        |            return
        |
        |        # Drop rows with missing x/y
-       |        table.dropna(subset=['${xColumn}', '${yColumn}'], inplace=True)
+       |        table.dropna(subset=[$xColumn, $yColumn], inplace=True)
        |        if table.empty:
        |            yield {"html-content": self.render_error("No rows after dropping nulls.")}
        |            return
        |
        |        fig = px.density_heatmap(
        |            table,
-       |            x='${xColumn}',
-       |            y='${yColumn}',
-       |            nbinsx=${xBins},
-       |            nbinsy=${yBins},
-       |            ${normArg}
+       |            x=$xColumn,
+       |            y=$yColumn,
+       |            nbinsx=$xBins,
+       |            nbinsy=$yBins,
+       |            $normArg
        |            text_auto=True
        |        )
        |
        |        html = plotly.io.to_html(fig, include_plotlyjs='cdn', auto_play=False)
        |        yield {"html-content": html}
-       |""".stripMargin
+       |""".encode
   }
 }

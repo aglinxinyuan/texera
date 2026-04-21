@@ -22,11 +22,13 @@ package org.apache.texera.amber.operator.visualization.choroplethMap
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.{JsonSchemaInject, JsonSchemaTitle}
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder
 
 @JsonSchemaInject(json = """
 {
@@ -48,7 +50,7 @@ class ChoroplethMapOpDesc extends PythonOperatorDescriptor {
     "Column used to describe location. Currently only supports countries and needs to be three-letter ISO country code"
   )
   @AutofillAttributeName
-  var locations: String = ""
+  var locations: EncodableString = ""
 
   @JsonProperty(value = "color", required = true)
   @JsonSchemaTitle("Color Column")
@@ -56,7 +58,7 @@ class ChoroplethMapOpDesc extends PythonOperatorDescriptor {
     "Column used to determine intensity of color of the region"
   )
   @AutofillAttributeName
-  var color: String = ""
+  var color: EncodableString = ""
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -67,33 +69,31 @@ class ChoroplethMapOpDesc extends PythonOperatorDescriptor {
   }
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Choropleth Map",
       "Visualize data using a Choropleth Map that uses shades of colors to show differences in properties or quantities between regions",
-      OperatorGroupConstants.VISUALIZATION_ADVANCED_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_ADVANCED_GROUP
     )
 
-  def manipulateTable(): String = {
+  def manipulateTable(): PythonTemplateBuilder = {
     assert(locations.nonEmpty)
     assert(color.nonEmpty)
-    s"""
-       |        table.dropna(subset=['$locations', '$color'], inplace = True)
-       |""".stripMargin
+    pyb"""
+       |        table.dropna(subset=[$locations, $color], inplace = True)
+       |"""
   }
 
-  def createPlotlyFigure(): String = {
+  def createPlotlyFigure(): PythonTemplateBuilder = {
     assert(locations.nonEmpty && color.nonEmpty)
-    s"""
-       |        fig = px.choropleth(table, locations="$locations", color="$color", color_continuous_scale=px.colors.sequential.Plasma)
-       |        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
-       |""".stripMargin
+    pyb"""
+         |        fig = px.choropleth(table, locations=$locations, color=$color, color_continuous_scale=px.colors.sequential.Plasma)
+         |        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+         |"""
   }
 
   override def generatePythonCode(): String = {
     val finalCode =
-      s"""
+      pyb"""
          |from pytexera import *
          |
          |import plotly.express as px
@@ -120,7 +120,7 @@ class ChoroplethMapOpDesc extends PythonOperatorDescriptor {
          |        ${createPlotlyFigure()}
          |        html = plotly.io.to_html(fig, include_plotlyjs='cdn', auto_play=False)
          |        yield {'html-content': html}
-         |""".stripMargin
-    finalCode
+         |"""
+    finalCode.encode
   }
 }

@@ -22,13 +22,15 @@ package org.apache.texera.amber.operator.visualization.bulletChart
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.JsonSchemaTitle
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
 
-import java.util.{ArrayList, List => JList}
+import java.util
+import java.util.{List => JList}
 import scala.jdk.CollectionConverters._
 
 /**
@@ -40,22 +42,22 @@ class BulletChartOpDesc extends PythonOperatorDescriptor {
   @JsonProperty(value = "value", required = true)
   @JsonSchemaTitle("Value")
   @JsonPropertyDescription("The actual value to display on the bullet chart")
-  @AutofillAttributeName var value: String = ""
+  @AutofillAttributeName var value: EncodableString = ""
 
   @JsonProperty(value = "deltaReference", required = true)
   @JsonSchemaTitle("Delta Reference")
   @JsonPropertyDescription("The reference value for the delta indicator. e.g., 100")
-  var deltaReference: String = ""
+  var deltaReference: EncodableString = ""
 
   @JsonProperty(value = "thresholdValue", required = false)
   @JsonSchemaTitle("Threshold Value")
   @JsonPropertyDescription("The performance threshold value. e.g., 100")
-  var thresholdValue: String = ""
+  var thresholdValue: EncodableString = ""
 
   @JsonProperty(value = "steps", required = false)
   @JsonSchemaTitle("Steps")
   @JsonPropertyDescription("Optional: Each step includes a start and end value e.g., 0, 100.")
-  var steps: JList[BulletChartStepDefinition] = new ArrayList[BulletChartStepDefinition]()
+  var steps: JList[BulletChartStepDefinition] = new util.ArrayList[BulletChartStepDefinition]()
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -65,27 +67,25 @@ class BulletChartOpDesc extends PythonOperatorDescriptor {
   }
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Bullet Chart",
       """Visualize data using a Bullet Chart that shows a primary quantitative bar and delta indicator.
         |Optional elements such as qualitative ranges (steps) and a performance threshold are displayed only when provided.""".stripMargin,
-      OperatorGroupConstants.VISUALIZATION_FINANCIAL_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_FINANCIAL_GROUP
     )
 
   override def generatePythonCode(): String = {
     // Convert the Scala list of steps into a list of dictionaries
     val stepsStr = if (steps != null && !steps.isEmpty) {
       val stepsSeq =
-        steps.asScala.map(step => s"""{"start": "${step.start}", "end": "${step.end}"}""")
+        steps.asScala.map(step => pyb"""{"start": ${step.start}, "end": ${step.end}}""")
       "[" + stepsSeq.mkString(", ") + "]"
     } else {
       "[]"
     }
 
     val finalCode =
-      s"""
+      pyb"""
          |from pytexera import *
          |import plotly.graph_objects as go
          |import plotly.io as pio
@@ -133,8 +133,8 @@ class BulletChartOpDesc extends PythonOperatorDescriptor {
          |            return
          |
          |        try:
-         |            value_col = "$value"
-         |            delta_ref = float("$deltaReference") if "$deltaReference".strip() else 0
+         |            value_col = $value
+         |            delta_ref = float($deltaReference) if $deltaReference.strip() else 0
          |
          |            if value_col not in table.columns:
          |                yield {'html-content': self.render_error(f"Column '{value_col}' not found in input table.")}
@@ -146,7 +146,7 @@ class BulletChartOpDesc extends PythonOperatorDescriptor {
          |                return
          |
          |            try:
-         |                threshold_val = float("$thresholdValue") if "$thresholdValue".strip() else None
+         |                threshold_val = float($thresholdValue) if $thresholdValue.strip() else None
          |            except ValueError:
          |                threshold_val = None
          |
@@ -225,7 +225,7 @@ class BulletChartOpDesc extends PythonOperatorDescriptor {
          |            yield {"html-content": final_html}
          |        except Exception as e:
          |            yield {'html-content': self.render_error(f"General error: {str(e)}")}
-         |""".stripMargin
-    finalCode
+         |"""
+    finalCode.encode
   }
 }

@@ -178,12 +178,19 @@ class PythonWorkflowWorker(
         Integer.toString(pythonProxyServer.getPortNumber.get()),
         UdfConfig.pythonLogStreamHandlerLevel,
         RENVPath,
+        StorageConfig.icebergCatalogType,
         StorageConfig.icebergPostgresCatalogUriWithoutScheme,
         StorageConfig.icebergPostgresCatalogUsername,
         StorageConfig.icebergPostgresCatalogPassword,
+        StorageConfig.icebergRESTCatalogUri,
+        StorageConfig.icebergRESTCatalogWarehouseName,
         StorageConfig.icebergTableResultNamespace,
         StorageConfig.fileStorageDirectoryPath.toString,
-        StorageConfig.icebergTableCommitBatchSize.toString
+        StorageConfig.icebergTableCommitBatchSize.toString,
+        StorageConfig.s3Endpoint,
+        StorageConfig.s3Region,
+        StorageConfig.s3Username,
+        StorageConfig.s3Password
       )
     ).run(BasicIO.standard(false))
   }

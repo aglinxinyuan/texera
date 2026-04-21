@@ -43,11 +43,7 @@ object EnvironmentalVariable {
     * Auth related vars
     */
   val ENV_USER_JWT_TOKEN = "USER_JWT_TOKEN"
-
-  /**
-    * Variables in storage.conf
-    */
-  val ENV_RESULT_STORAGE_MODE = "STORAGE_RESULT_MODE"
+  val ENV_AUTH_JWT_SECRET = "AUTH_JWT_SECRET"
 
   // JDBC
   val ENV_JDBC_URL = "STORAGE_JDBC_URL"
@@ -57,6 +53,7 @@ object EnvironmentalVariable {
   // Iceberg Catalog
   val ENV_ICEBERG_CATALOG_TYPE = "STORAGE_ICEBERG_CATALOG_TYPE"
   val ENV_ICEBERG_CATALOG_REST_URI = "STORAGE_ICEBERG_CATALOG_REST_URI"
+  val ENV_ICEBERG_CATALOG_REST_WAREHOUSE_NAME = "STORAGE_ICEBERG_CATALOG_REST_WAREHOUSE_NAME"
 
   // Iceberg Postgres Catalog
   val ENV_ICEBERG_CATALOG_POSTGRES_URI_WITHOUT_SCHEME =

@@ -22,18 +22,20 @@ package org.apache.texera.amber.operator.visualization.ImageViz
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.JsonSchemaTitle
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder
 class ImageVisualizerOpDesc extends PythonOperatorDescriptor {
 
   @JsonProperty(required = true)
   @JsonSchemaTitle("image content column")
   @JsonPropertyDescription("The Binary data of the Image")
   @AutofillAttributeName
-  var binaryContent: String = _
+  var binaryContent: EncodableString = _
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -45,24 +47,22 @@ class ImageVisualizerOpDesc extends PythonOperatorDescriptor {
   }
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Image Visualizer",
       "visualize image content",
-      OperatorGroupConstants.VISUALIZATION_MEDIA_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_MEDIA_GROUP
     )
 
-  def createBinaryData(): String = {
+  def createBinaryData(): PythonTemplateBuilder = {
     assert(binaryContent.nonEmpty)
-    s"""
-       |        binary_image_data = tuple_['$binaryContent']
-       |""".stripMargin
+    pyb"""
+       |        binary_image_data = tuple_[$binaryContent]
+       |"""
   }
 
   override def generatePythonCode(): String = {
     val finalCode =
-      s"""
+      pyb"""
          |from pytexera import *
          |import base64
          |from io import BytesIO
@@ -92,8 +92,8 @@ class ImageVisualizerOpDesc extends PythonOperatorDescriptor {
          |    def on_finish(self, port: int) -> Iterator[Optional[TupleLike]]:
          |        all_images_html = "<div>" + "".join(self.images_html) + "</div>"
          |        yield {"html-content": all_images_html}
-         |""".stripMargin
-    finalCode
+         |"""
+    finalCode.encode
   }
 
 }

@@ -22,11 +22,13 @@ package org.apache.texera.amber.operator.visualization.scatter3DChart
 import com.fasterxml.jackson.annotation.{JsonProperty, JsonPropertyDescription}
 import com.kjetland.jackson.jsonSchema.annotations.{JsonSchemaInject, JsonSchemaTitle}
 import org.apache.texera.amber.core.tuple.{AttributeType, Schema}
-import org.apache.texera.amber.core.workflow.OutputPort.OutputMode
-import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PortIdentity}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder.PythonTemplateBuilderStringContext
+import org.apache.texera.amber.pybuilder.PyStringTypes.EncodableString
+import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.operator.PythonOperatorDescriptor
 import org.apache.texera.amber.operator.metadata.annotations.AutofillAttributeName
 import org.apache.texera.amber.operator.metadata.{OperatorGroupConstants, OperatorInfo}
+import org.apache.texera.amber.pybuilder.PythonTemplateBuilder
 @JsonSchemaInject(json = """
 {
   "attributeTypeRules": {
@@ -39,19 +41,19 @@ class Scatter3dChartOpDesc extends PythonOperatorDescriptor {
   @JsonSchemaTitle("X Column")
   @JsonPropertyDescription("Data column for the x-axis")
   @AutofillAttributeName
-  var x: String = ""
+  var x: EncodableString = ""
 
   @JsonProperty(value = "y", required = true)
   @JsonSchemaTitle("Y Column")
   @JsonPropertyDescription("Data column for the y-axis")
   @AutofillAttributeName
-  var y: String = ""
+  var y: EncodableString = ""
 
   @JsonProperty(value = "z", required = true)
   @JsonSchemaTitle("Z Column")
   @JsonPropertyDescription("Data column for the z-axis")
   @AutofillAttributeName
-  var z: String = ""
+  var z: EncodableString = ""
 
   override def getOutputSchemas(
       inputSchemas: Map[PortIdentity, Schema]
@@ -63,45 +65,43 @@ class Scatter3dChartOpDesc extends PythonOperatorDescriptor {
   }
 
   override def operatorInfo: OperatorInfo =
-    OperatorInfo(
+    OperatorInfo.forVisualization(
       "Scatter3D Chart",
       "Visualize data in a Scatter3D Plot",
-      OperatorGroupConstants.VISUALIZATION_ADVANCED_GROUP,
-      inputPorts = List(InputPort()),
-      outputPorts = List(OutputPort(mode = OutputMode.SINGLE_SNAPSHOT))
+      OperatorGroupConstants.VISUALIZATION_ADVANCED_GROUP
     )
 
-  private def createPlotlyFigure(): String = {
+  private def createPlotlyFigure(): PythonTemplateBuilder = {
     assert(x.nonEmpty)
     assert(y.nonEmpty)
     assert(z.nonEmpty)
-    s"""
-       |        fig = go.Figure(data=[go.Scatter3d(
-       |            x=table["$x"],
-       |            y=table["$y"],
-       |            z=table["$z"],
-       |            mode='markers',
-       |            marker=dict(
-       |                size=12,
-       |                colorscale='Viridis',
-       |                opacity=0.8
-       |            )
-       |        )])
-       |        fig.update_traces(marker=dict(size=5, opacity=0.8))
-       |        fig.update_layout(
-       |            scene=dict(
-       |                xaxis_title='X: $x',
-       |                yaxis_title='Y: $y',
-       |                zaxis_title='Z: $z'
-       |            ),
-       |            margin=dict(t=0, b=0, l=0, r=0)
-       |        )
-       |""".stripMargin
+    pyb"""
+         |        fig = go.Figure(data=[go.Scatter3d(
+         |            x=table[$x],
+         |            y=table[$y],
+         |            z=table[$z],
+         |            mode='markers',
+         |            marker=dict(
+         |                size=12,
+         |                colorscale='Viridis',
+         |                opacity=0.8
+         |            )
+         |        )])
+         |        fig.update_traces(marker=dict(size=5, opacity=0.8))
+         |        fig.update_layout(
+         |            scene=dict(
+         |                xaxis_title='X:' + $x,
+         |                yaxis_title='Y:' + $y,
+         |                zaxis_title='Z:' + $z
+         |            ),
+         |            margin=dict(t=0, b=0, l=0, r=0)
+         |        )
+         |"""
   }
 
   override def generatePythonCode(): String = {
     val finalcode =
-      s"""
+      pyb"""
          |from pytexera import *
          |
          |import plotly.express as px
@@ -126,7 +126,7 @@ class Scatter3dChartOpDesc extends PythonOperatorDescriptor {
          |        html = plotly.io.to_html(fig, include_plotlyjs='cdn', auto_play=False)
          |        yield {'html-content': html}
          |
-         |""".stripMargin
-    finalcode
+         |"""
+    finalcode.encode
   }
 }

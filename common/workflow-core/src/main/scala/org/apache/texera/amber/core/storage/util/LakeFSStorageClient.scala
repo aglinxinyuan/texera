@@ -25,6 +25,7 @@ import io.lakefs.clients.sdk.model._
 import org.apache.texera.amber.config.StorageConfig
 
 import java.io.{File, FileOutputStream, InputStream}
+import java.net.URI
 import java.nio.file.Files
 import scala.jdk.CollectionConverters._
 
@@ -33,6 +34,9 @@ import scala.jdk.CollectionConverters._
   * similar to Git operations for version control and file management.
   */
 object LakeFSStorageClient {
+
+  // Maximum number of results per LakeFS API request (pagination page size)
+  private val PageSize = 1000
 
   private lazy val apiClient: ApiClient = {
     val client = new ApiClient()
@@ -299,8 +303,36 @@ object LakeFSStorageClient {
       .sortBy(_.getCreationDate)(Ordering[java.lang.Long].reverse) // Sort in descending order
   }
 
+  /**
+    * Fetches all pages from a paginated LakeFS API call.
+    *
+    * @param fetch A function that takes a pagination cursor and returns (results, pagination).
+    * @return All results across all pages.
+    */
+  private def fetchAllPages[T](
+      fetch: String => (java.util.List[T], Pagination)
+  ): List[T] = {
+    val allResults = scala.collection.mutable.ListBuffer[T]()
+    var hasMore = true
+    var after = "" // Pagination cursor returned by LakeFS
+
+    while (hasMore) {
+      val (results, pagination) = fetch(after)
+      allResults ++= results.asScala
+      hasMore = pagination.getHasMore
+      if (hasMore) after = pagination.getNextOffset
+    }
+
+    allResults.toList
+  }
+
   def retrieveObjectsOfVersion(repoName: String, commitHash: String): List[ObjectStats] = {
-    objectsApi.listObjects(repoName, commitHash).execute().getResults.asScala.toList
+    fetchAllPages[ObjectStats] { after =>
+      val request = objectsApi.listObjects(repoName, commitHash).amount(PageSize)
+      if (after.nonEmpty) request.after(after)
+      val response = request.execute()
+      (response.getResults, response.getPagination)
+    }
   }
 
   def retrieveRepositorySize(repoName: String, commitHash: String = ""): Long = {
@@ -333,12 +365,12 @@ object LakeFSStorageClient {
     * @return List of uncommitted object stats.
     */
   def retrieveUncommittedObjects(repoName: String): List[Diff] = {
-    branchesApi
-      .diffBranch(repoName, branchName)
-      .execute()
-      .getResults
-      .asScala
-      .toList
+    fetchAllPages[Diff] { after =>
+      val request = branchesApi.diffBranch(repoName, branchName).amount(PageSize)
+      if (after.nonEmpty) request.after(after)
+      val response = request.execute()
+      (response.getResults, response.getPagination)
+    }
   }
 
   def createCommit(repoName: String, branch: String, commitMessage: String): Commit = {
@@ -357,5 +389,67 @@ object LakeFSStorageClient {
     resetCreation.setPath(filePath)
 
     branchesApi.resetBranch(repoName, branchName, resetCreation).execute()
+  }
+
+  /**
+    * Parse a physical address URI of the form "<scheme>://<bucket>/<key...>" into (bucket, key).
+    *
+    * Expected examples:
+    *   - "s3://my-bucket/path/to/file.csv"
+    *   - "gs://my-bucket/some/prefix/data.json"
+    *
+    * @param address URI string in the form "<scheme>://<bucket>/<key...>"
+    * @return (bucket, key) where key does not start with "/"
+    * @throws IllegalArgumentException
+    *   if the address is empty, not a valid URI, missing bucket/host, or missing key/path
+    */
+  def parsePhysicalAddress(address: String): (String, String) = {
+    val raw = Option(address).getOrElse("").trim
+    if (raw.isEmpty)
+      throw new IllegalArgumentException("Address is empty (expected '<scheme>://<bucket>/<key>')")
+
+    val uri =
+      try new URI(raw)
+      catch {
+        case e: Exception =>
+          throw new IllegalArgumentException(
+            s"Invalid address URI: '$raw' (expected '<scheme>://<bucket>/<key>')",
+            e
+          )
+      }
+
+    val bucket = Option(uri.getHost).getOrElse("").trim
+    if (bucket.isEmpty)
+      throw new IllegalArgumentException(
+        s"Invalid address: missing host/bucket in '$raw' (expected '<scheme>://<bucket>/<key>')"
+      )
+
+    val key = Option(uri.getPath).getOrElse("").stripPrefix("/").trim
+    if (key.isEmpty)
+      throw new IllegalArgumentException(
+        s"Invalid address: missing key/path in '$raw' (expected '<scheme>://<bucket>/<key>')"
+      )
+
+    (bucket, key)
+  }
+
+  /**
+    * Get file size.
+    *
+    * @param repoName     Repository name.
+    * @param commitHash   Commit hash of the version.
+    * @param filePath     Path to the file in the repository.
+    * @return File size in bytes
+    */
+  def getFileSize(
+      repoName: String,
+      commitHash: String,
+      filePath: String
+  ): Long = {
+    objectsApi
+      .statObject(repoName, commitHash, filePath)
+      .execute()
+      .getSizeBytes
+      .longValue()
   }
 }
