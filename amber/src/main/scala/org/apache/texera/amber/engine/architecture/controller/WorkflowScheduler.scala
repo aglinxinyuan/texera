@@ -20,6 +20,7 @@
 package org.apache.texera.amber.engine.architecture.controller
 
 import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
+import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
 import org.apache.texera.amber.core.workflow.{PhysicalPlan, WorkflowContext}
 import org.apache.texera.amber.engine.architecture.scheduling.{
   CostBasedScheduleGenerator,
@@ -53,5 +54,7 @@ class WorkflowScheduler(
   }
 
   def getNextRegions: Set[Region] = if (!schedule.hasNext) Set() else schedule.next()
+
+  def jumpToOperator(opId: OperatorIdentity): Unit = schedule.jumpToOperator(opId)
 
 }

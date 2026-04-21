@@ -17,29 +17,25 @@
  * under the License.
  */
 
-package org.apache.texera.amber.engine.architecture.scheduling
+package org.apache.texera.amber.engine.architecture.controller.promisehandlers
 
-import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
+import com.twitter.util.Future
+import org.apache.texera.amber.engine.architecture.controller.ControllerAsyncRPCHandlerInitializer
+import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{
+  AsyncRPCContext,
+  JumpToOperatorRequest
+}
+import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 
-case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterator[Set[Region]] {
-  private var currentLevel = levelSets.keys.minOption.getOrElse(0)
+/** Requests the scheduler to continue from the region containing the target operator. */
+trait JumpToOperatorHandler {
+  this: ControllerAsyncRPCHandlerInitializer =>
 
-  def getRegions: List[Region] = levelSets.values.flatten.toList
-
-  override def hasNext: Boolean = levelSets.isDefinedAt(currentLevel)
-
-  override def next(): Set[Region] = {
-    val regions = levelSets(currentLevel)
-    currentLevel += 1
-    regions
+  override def jumpToOperator(
+      msg: JumpToOperatorRequest,
+      ctx: AsyncRPCContext
+  ): Future[EmptyReturn] = {
+    cp.workflowExecutionCoordinator.jumpToOperator(msg.targetOperatorId)
+    EmptyReturn()
   }
-
-  def jumpToOperator(opId: OperatorIdentity): Unit =
-    levelSets
-      .collectFirst {
-        case (level, regions)
-            if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
-          level
-      }
-      .foreach(currentLevel = _)
 }

@@ -21,19 +21,20 @@ package org.apache.texera.amber.engine.architecture.scheduling
 
 import com.twitter.util.Future
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
 import org.apache.texera.amber.core.workflow.{GlobalPortIdentity, PhysicalLink}
 import org.apache.texera.amber.engine.architecture.common.{
   AkkaActorRefMappingService,
   AkkaActorService
 }
-import org.apache.texera.amber.engine.architecture.controller.ControllerConfig
+import org.apache.texera.amber.engine.architecture.controller.{ControllerConfig, WorkflowScheduler}
 import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 
 import scala.collection.mutable
 
 class WorkflowExecutionCoordinator(
-    getNextRegions: () => Set[Region],
+    workflowScheduler: WorkflowScheduler,
     workflowExecution: WorkflowExecution,
     controllerConfig: ControllerConfig,
     asyncRPCClient: AsyncRPCClient
@@ -81,7 +82,7 @@ class WorkflowExecutionCoordinator(
     // All existing regions are completed. Start the next region (if any).
     Future
       .collect({
-        val nextRegions = getNextRegions()
+        val nextRegions = workflowScheduler.getNextRegions
         executedRegions.append(nextRegions)
         nextRegions
           .map(region => {
@@ -114,6 +115,10 @@ class WorkflowExecutionCoordinator(
     executedRegions.flatten
       .filterNot(region => workflowExecution.getRegionExecution(region.id).isCompleted)
       .toSet
+  }
+
+  def jumpToOperator(opId: OperatorIdentity): Unit = {
+    workflowScheduler.jumpToOperator(opId)
   }
 
 }
