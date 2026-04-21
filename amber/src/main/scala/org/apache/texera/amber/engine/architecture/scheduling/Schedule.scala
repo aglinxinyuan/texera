@@ -34,7 +34,7 @@ case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterat
     regions
   }
 
-  def goto(opId: OperatorIdentity): Unit =
+  def jumpToOperator(opId: OperatorIdentity): Unit =
     levelSets
       .collectFirst {
         case (level, regions)

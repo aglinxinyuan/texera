@@ -23,25 +23,19 @@ import com.twitter.util.Future
 import org.apache.texera.amber.engine.architecture.controller.ControllerAsyncRPCHandlerInitializer
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{
   AsyncRPCContext,
-  NextIterationRequest
+  JumpToOperatorRequest
 }
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 
-/** indicate a worker has completed its execution
-  * i.e. received and processed all data from upstreams
-  * note that this doesn't mean all the output of this worker
-  * has been received by the downstream workers.
-  *
-  * possible sender: worker
-  */
-trait NextIterationHandler {
+/** Requests the scheduler to continue from the region containing the target operator. */
+trait JumpToOperatorHandler {
   this: ControllerAsyncRPCHandlerInitializer =>
 
-  override def nextIteration(
-      msg: NextIterationRequest,
+  override def jumpToOperator(
+      msg: JumpToOperatorRequest,
       ctx: AsyncRPCContext
   ): Future[EmptyReturn] = {
-    cp.workflowExecutionCoordinator.goto(msg.loopStartId)
+    cp.workflowExecutionCoordinator.jumpToOperator(msg.targetOperatorId)
     EmptyReturn()
   }
 }

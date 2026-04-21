@@ -135,8 +135,8 @@ class WorkflowExecutionCoordinator(
     regionExecutionCoordinators.values.exists(!_.isCompleted)
   }
 
-  def goto(OpId: OperatorIdentity): Unit = {
-    workflowScheduler.schedule.goto(OpId)
+  def jumpToOperator(opId: OperatorIdentity): Unit = {
+    workflowScheduler.schedule.jumpToOperator(opId)
   }
 
 }

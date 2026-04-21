@@ -69,7 +69,7 @@ from proto.org.apache.texera.amber.engine.architecture.rpc import (
     EmbeddedControlMessage,
     AsyncRpcContext,
     ControlRequest,
-    NextIterationRequest,
+    JumpToOperatorRequest,
 )
 from proto.org.apache.texera.amber.engine.architecture.worker import (
     WorkerState,
@@ -106,11 +106,11 @@ class MainLoop(StoppableQueueBlockingRunnable):
             self.context.input_manager.get_input_state_result_uri()
         )
 
-    def _next_iteration(
+    def _jump_to_loop_start(
         self, executor: LoopEndOperator, controller_interface
     ) -> None:
-        controller_interface.next_iteration(
-            NextIterationRequest(OperatorIdentity(executor.loop_start_id()))
+        controller_interface.jump_to_operator(
+            JumpToOperatorRequest(OperatorIdentity(executor.loop_start_id()))
         )
         uri = executor.state["LoopStartStateURI"]
         del executor.state["LoopStartStateURI"]
@@ -129,7 +129,7 @@ class MainLoop(StoppableQueueBlockingRunnable):
         controller_interface = self._async_rpc_client.controller_stub()
         executor = self.context.executor_manager.executor
         if isinstance(executor, LoopEndOperator) and executor.condition():
-            self._next_iteration(executor, controller_interface)
+            self._jump_to_loop_start(executor, controller_interface)
         executor.close()
         # stop the data processing thread
         self.data_processor.stop()
