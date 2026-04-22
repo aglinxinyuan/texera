@@ -37,8 +37,7 @@ case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterat
   def jumpToOperator(opId: OperatorIdentity): Unit =
     levelSets
       .collectFirst {
-        case (level, regions)
-            if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
+        case (level, regions) if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
           level
       }
       .foreach(currentLevel = _)
