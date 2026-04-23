@@ -124,8 +124,6 @@ class OutputManager(
       : mutable.HashMap[PortIdentity, OutputPortResultWriterThread] =
     mutable.HashMap()
 
-  private val storageUris: mutable.HashMap[Int, URI] = mutable.HashMap()
-
   /**
     * Add down stream operator and its corresponding Partitioner.
     *
@@ -234,23 +232,6 @@ class OutputManager(
     })
   }
 
-  def saveStateToStorageIfNeeded(state: State): Unit = {
-    try {
-      storageUris.foreach {
-        case (_, uri) =>
-          val writer = DocumentFactory
-            .openDocument(State.stateUriFromResultUri(uri))
-            ._1
-            .writer(VirtualIdentityUtils.getWorkerIndex(actorId).toString)
-            .asInstanceOf[BufferedItemWriter[Tuple]]
-          writer.putOne(State.serialize(state))
-          writer.close()
-      }
-    } catch {
-      case _: Exception => ()
-    }
-  }
-
   /**
     * Singal the port storage writer to flush the remaining buffer and wait for commits to finish so that
     * the output port is properly completed. If the output port does not need storage, no action will be done.
@@ -299,7 +280,6 @@ class OutputManager(
   }
 
   private def setupOutputStorageWriterThread(portId: PortIdentity, storageUri: URI): Unit = {
-    this.storageUris(portId.id) = storageUri
     val bufferedItemWriter = DocumentFactory
       .openDocument(storageUri)
       ._1

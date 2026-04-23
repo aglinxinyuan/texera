@@ -21,7 +21,6 @@ package org.apache.texera.amber.engine.architecture.worker.managers
 
 import io.grpc.MethodDescriptor
 import org.apache.texera.amber.config.ApplicationConfig
-import org.apache.texera.amber.core.state.State
 import org.apache.texera.amber.core.storage.DocumentFactory
 import org.apache.texera.amber.core.storage.model.VirtualDocument
 import org.apache.texera.amber.core.tuple.Tuple
@@ -46,11 +45,7 @@ import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.{
   DPInputQueueElement,
   FIFOMessageElement
 }
-import org.apache.texera.amber.engine.common.ambermessage.{
-  DataFrame,
-  StateFrame,
-  WorkflowFIFOMessage
-}
+import org.apache.texera.amber.engine.common.ambermessage.{DataFrame, WorkflowFIFOMessage}
 import org.apache.texera.amber.util.VirtualIdentityUtils.getFromActorIdForInputPortStorage
 
 import java.net.URI
@@ -111,25 +106,6 @@ class InputPortMaterializationReaderThread(
       }
       // Flush any remaining tuples in the buffer.
       if (buffer.nonEmpty) flush()
-
-      try {
-        val state_document =
-          DocumentFactory
-            .openDocument(State.stateUriFromResultUri(uri))
-            ._1
-            .asInstanceOf[VirtualDocument[Tuple]]
-        val stateReadIterator = state_document.get()
-
-        while (stateReadIterator.hasNext) {
-          val state = State.deserialize(stateReadIterator.next())
-          inputMessageQueue.put(
-            FIFOMessageElement(WorkflowFIFOMessage(channelId, getSequenceNumber, StateFrame(state)))
-          )
-        }
-      } catch {
-        case _: Exception =>
-      }
-
       emitECM(METHOD_END_CHANNEL, PORT_ALIGNMENT)
       isFinished.set(true)
     } catch {

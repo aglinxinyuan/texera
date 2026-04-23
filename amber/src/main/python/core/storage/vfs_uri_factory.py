@@ -34,7 +34,6 @@ class VFSResourceType(str, Enum):
     RESULT = "result"
     RUNTIME_STATISTICS = "runtimeStatistics"
     CONSOLE_MESSAGES = "consoleMessages"
-    STATE = "state"
 
 
 class VFSURIFactory:
