@@ -32,6 +32,10 @@ _BYTES_TYPE = "bytes"
 STATE_SCHEMA = Schema(raw_schema={STATE_CONTENT: "STRING"})
 
 
+def state_uri_from_result_uri(result_uri: str) -> str:
+    return result_uri.replace("/result", "/state")
+
+
 def serialize_state(state: State) -> Tuple:
     return Tuple(
         {

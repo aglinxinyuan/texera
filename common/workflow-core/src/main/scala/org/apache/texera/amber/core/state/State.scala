@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import org.apache.texera.amber.core.tuple.{Attribute, AttributeType, Schema, Tuple}
 import org.apache.texera.amber.util.JSONUtils.objectMapper
 
+import java.net.URI
 import java.util.Base64
 import scala.jdk.CollectionConverters.IteratorHasAsScala
 
@@ -35,6 +36,9 @@ object State {
   val schema: Schema = new Schema(
     new Attribute(StateContent, AttributeType.STRING)
   )
+
+  def stateUriFromResultUri(resultUri: URI): URI =
+    new URI(resultUri.toString.replace("/result", "/state"))
 
   def serialize(state: State): Tuple = {
     val payloadJson = objectMapper.writeValueAsString(toJsonValue(state))
