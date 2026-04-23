@@ -357,3 +357,47 @@ class TestIcebergDocument:
         stored_rows = list(document.get())
         assert len(stored_rows) == 1
         assert deserialize_state(stored_rows[0]) == state
+
+    def test_multiple_states_materialize_as_rows_in_one_table(self):
+        operator_uuid = str(uuid.uuid4()).replace("-", "")
+        result_uri = VFSURIFactory.create_result_uri(
+            WorkflowIdentity(id=0),
+            ExecutionIdentity(id=0),
+            GlobalPortIdentity(
+                op_id=PhysicalOpIdentity(
+                    logical_op_id=OperatorIdentity(
+                        id=f"test_multiple_states_{operator_uuid}"
+                    ),
+                    layer_name="main",
+                ),
+                port_id=PortIdentity(id=0),
+                input=False,
+            ),
+        )
+        state_uri = state_uri_from_result_uri(result_uri)
+        DocumentFactory.create_document(state_uri, STATE_SCHEMA)
+        document, _ = DocumentFactory.open_document(state_uri)
+
+        states = [
+            {"loop_counter": 0, "i": 1, "payload": b"first"},
+            {
+                "loop_counter": 1,
+                "i": 2,
+                "payload": b"second",
+                "nested": {"values": [3, 4]},
+            },
+        ]
+
+        writer = document.writer(str(uuid.uuid4()))
+        writer.open()
+        for state in states:
+            writer.put_one(serialize_state(state))
+        writer.close()
+
+        stored_rows = list(document.get())
+        assert len(stored_rows) == len(states)
+        actual_states = sorted(
+            [deserialize_state(row) for row in stored_rows],
+            key=lambda state: state["loop_counter"],
+        )
+        assert actual_states == states

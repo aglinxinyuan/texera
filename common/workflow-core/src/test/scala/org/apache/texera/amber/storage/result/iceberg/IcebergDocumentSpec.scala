@@ -169,6 +169,44 @@ class IcebergDocumentSpec extends VirtualDocumentSpec[Tuple] with BeforeAndAfter
     assert(deserialized("nested").asInstanceOf[Map[String, Any]]("values") == List(1L, 2L, 3L))
   }
 
+  it should "materialize multiple states as rows in one state table" in {
+    val stateUri = State.stateUriFromResultUri(uri)
+    DocumentFactory.createDocument(stateUri, State.schema)
+    val stateDocument =
+      DocumentFactory.openDocument(stateUri)._1.asInstanceOf[VirtualDocument[Tuple]]
+    val states: List[State] = List(
+      Map("loop_counter" -> 0, "i" -> 1, "payload" -> Array[Byte](1, 2, 3)),
+      Map(
+        "loop_counter" -> 1,
+        "i" -> 2,
+        "payload" -> Array[Byte](4, 5, 6),
+        "nested" -> Map("values" -> List(3, 4))
+      )
+    )
+
+    val writer = stateDocument.writer(UUID.randomUUID().toString)
+    writer.open()
+    states.foreach(state => writer.putOne(State.serialize(state)))
+    writer.close()
+
+    val deserializedStates =
+      stateDocument.get().toList.map(State.deserialize).sortBy(_("loop_counter").asInstanceOf[Long])
+    assert(deserializedStates.length == states.length)
+    deserializedStates.zip(states).foreach {
+      case (actual, expected) =>
+        assert(actual("loop_counter") == expected("loop_counter").asInstanceOf[Int].toLong)
+        assert(actual("i") == expected("i").asInstanceOf[Int].toLong)
+        assert(
+          actual("payload")
+            .asInstanceOf[Array[Byte]]
+            .sameElements(expected("payload").asInstanceOf[Array[Byte]])
+        )
+    }
+    assert(
+      deserializedStates(1)("nested").asInstanceOf[Map[String, Any]]("values") == List(3L, 4L)
+    )
+  }
+
   /** Returns a dynamic proxy for `realTable` that increments `counter` on every `refresh()` call. */
   private def tableWithRefreshSpy(realTable: Table, counter: AtomicInteger): Table =
     Proxy
