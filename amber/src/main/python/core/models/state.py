@@ -15,61 +15,64 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from dataclasses import dataclass
-from pandas import DataFrame
-from pyarrow import Table
-from typing import Optional
+import base64
+import json
+from typing import Any, Dict, TypeAlias
 
-from .schema import Schema, AttributeType
-from .schema.attribute_type import FROM_PYOBJECT_MAPPING
+from .schema import Schema
+from .tuple import Tuple
+
+State: TypeAlias = Dict[str, Any]
+
+STATE_CONTENT = "content"
+_TYPE_MARKER = "__texera_type__"
+_PAYLOAD_MARKER = "payload"
+_BYTES_TYPE = "bytes"
+
+STATE_SCHEMA = Schema(raw_schema={STATE_CONTENT: "STRING"})
 
 
-@dataclass
-class State:
-    def __init__(
-        self, table: Optional[Table] = None, pass_to_all_downstream: bool = False
-    ):
-        self.schema = Schema()
-        self.passToAllDownstream = pass_to_all_downstream
-        if table is not None:
-            self.__dict__.update(table.to_pandas().iloc[0].to_dict())
-            self.schema = Schema(table.schema)
+def state_uri_from_result_uri(result_uri: str) -> str:
+    return result_uri.replace("/result", "/state")
 
-    def add(
-        self, key: str, value: any, value_type: Optional[AttributeType] = None
-    ) -> None:
-        self.__dict__[key] = value
-        if value_type is not None:
-            self.schema.add(key, value_type)
-        elif key != "schema":
-            self.schema.add(key, FROM_PYOBJECT_MAPPING[type(value)])
 
-    def get(self, key: str) -> any:
-        return self.__dict__[key]
+def serialize_state(state: State) -> Tuple:
+    return Tuple(
+        {
+            STATE_CONTENT: json.dumps(
+                _to_json_value(state), separators=(",", ":")
+            )
+        },
+        schema=STATE_SCHEMA,
+    )
 
-    def to_table(self) -> Table:
-        return Table.from_pandas(
-            df=DataFrame([self.__dict__]),
-            schema=self.schema.as_arrow_schema(),
-        )
 
-    def __setattr__(self, key: str, value: any) -> None:
-        self.add(key, value)
+def deserialize_state(row: Tuple) -> State:
+    return _from_json_value(json.loads(row[STATE_CONTENT]))
 
-    def __setitem__(self, key: str, value: any) -> None:
-        self.add(key, value)
 
-    def __getitem__(self, key: str) -> any:
-        return self.get(key)
+def _to_json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        return {
+            _TYPE_MARKER: _BYTES_TYPE,
+            _PAYLOAD_MARKER: base64.b64encode(value).decode("ascii"),
+        }
+    if isinstance(value, dict):
+        return {str(key): _to_json_value(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_json_value(inner) for inner in value]
+    raise TypeError(
+        f"State value of type {type(value).__name__} is not JSON serializable"
+    )
 
-    def __str__(self) -> str:
-        content = ", ".join(
-            [
-                repr(key) + ": " + repr(value)
-                for key, value in self.__dict__.items()
-                if key != "schema"
-            ]
-        )
-        return f"State[{content}]"
 
-    __repr__ = __str__
+def _from_json_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_from_json_value(inner) for inner in value]
+    if isinstance(value, dict):
+        if value.get(_TYPE_MARKER) == _BYTES_TYPE:
+            return base64.b64decode(value[_PAYLOAD_MARKER])
+        return {key: _from_json_value(inner) for key, inner in value.items()}
+    return value
