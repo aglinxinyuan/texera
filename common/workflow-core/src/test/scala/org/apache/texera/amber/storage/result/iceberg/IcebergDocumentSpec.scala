@@ -20,6 +20,7 @@
 package org.apache.texera.amber.storage.result.iceberg
 
 import org.apache.texera.amber.config.StorageConfig
+import org.apache.texera.amber.core.state.State
 import org.apache.texera.amber.core.storage.model.{VirtualDocument, VirtualDocumentSpec}
 import org.apache.texera.amber.core.storage.{DocumentFactory, IcebergCatalogInstance, VFSURIFactory}
 import org.apache.texera.amber.core.tuple.{Attribute, AttributeType, Schema, Tuple}
@@ -139,6 +140,33 @@ class IcebergDocumentSpec extends VirtualDocumentSpec[Tuple] with BeforeAndAfter
     } finally {
       IcebergCatalogInstance.replaceInstance(realCatalog)
     }
+  }
+
+  it should "round trip materialized state documents" in {
+    val stateUri = State.stateUriFromResultUri(uri)
+    DocumentFactory.createDocument(stateUri, State.schema)
+    val stateDocument =
+      DocumentFactory.openDocument(stateUri)._1.asInstanceOf[VirtualDocument[Tuple]]
+    val state: State = Map(
+      "loop_counter" -> 3,
+      "name" -> "outer-loop",
+      "payload" -> Array[Byte](0, 1, 2, 3),
+      "nested" -> Map("enabled" -> true, "values" -> List(1, 2, 3))
+    )
+
+    val writer = stateDocument.writer(UUID.randomUUID().toString)
+    writer.open()
+    writer.putOne(State.serialize(state))
+    writer.close()
+
+    val storedRows = stateDocument.get().toList
+    assert(storedRows.length == 1)
+    val deserialized = State.deserialize(storedRows.head)
+    assert(deserialized("loop_counter") == 3L)
+    assert(deserialized("name") == "outer-loop")
+    assert(deserialized("payload").asInstanceOf[Array[Byte]].sameElements(Array[Byte](0, 1, 2, 3)))
+    assert(deserialized("nested").asInstanceOf[Map[String, Any]]("enabled") == true)
+    assert(deserialized("nested").asInstanceOf[Map[String, Any]]("values") == List(1L, 2L, 3L))
   }
 
   /** Returns a dynamic proxy for `realTable` that increments `counter` on every `refresh()` call. */

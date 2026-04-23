@@ -23,6 +23,12 @@ from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
 from core.models import Schema, Tuple
+from core.models.state import (
+    STATE_SCHEMA,
+    deserialize_state,
+    serialize_state,
+    state_uri_from_result_uri,
+)
 from core.storage.document_factory import DocumentFactory
 from core.storage.storage_config import StorageConfig
 from core.storage.vfs_uri_factory import VFSURIFactory
@@ -317,3 +323,37 @@ class TestIcebergDocument:
         assert iceberg_document.get_count() == len(sample_items), (
             "get_count should return the same number as the length of sample_items"
         )
+
+    def test_state_materialization_round_trip(self):
+        operator_uuid = str(uuid.uuid4()).replace("-", "")
+        result_uri = VFSURIFactory.create_result_uri(
+            WorkflowIdentity(id=0),
+            ExecutionIdentity(id=0),
+            GlobalPortIdentity(
+                op_id=PhysicalOpIdentity(
+                    logical_op_id=OperatorIdentity(id=f"test_state_{operator_uuid}"),
+                    layer_name="main",
+                ),
+                port_id=PortIdentity(id=0),
+                input=False,
+            ),
+        )
+        state_uri = state_uri_from_result_uri(result_uri)
+        DocumentFactory.create_document(state_uri, STATE_SCHEMA)
+        document, _ = DocumentFactory.open_document(state_uri)
+
+        state = {
+            "loop_counter": 3,
+            "name": "outer-loop",
+            "payload": b"\x00\x01state-bytes",
+            "nested": {"enabled": True, "values": [1, 2, 3]},
+        }
+
+        writer = document.writer(str(uuid.uuid4()))
+        writer.open()
+        writer.put_one(serialize_state(state))
+        writer.close()
+
+        stored_rows = list(document.get())
+        assert len(stored_rows) == 1
+        assert deserialize_state(stored_rows[0]) == state
