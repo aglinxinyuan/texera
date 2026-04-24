@@ -38,11 +38,7 @@ def state_uri_from_result_uri(result_uri: str) -> str:
 
 def serialize_state(state: State) -> Tuple:
     return Tuple(
-        {
-            STATE_CONTENT: json.dumps(
-                _to_json_value(state), separators=(",", ":")
-            )
-        },
+        {STATE_CONTENT: json.dumps(_to_json_value(state), separators=(",", ":"))},
         schema=STATE_SCHEMA,
     )
 

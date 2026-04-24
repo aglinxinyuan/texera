@@ -107,9 +107,7 @@ class NetworkSender(StoppableQueueBlockingRunnable):
             serialized_state = serialize_state(data_payload.frame)
             table = pa.Table.from_pydict(
                 {
-                    STATE_CONTENT: [
-                        serialized_state[STATE_CONTENT]
-                    ],
+                    STATE_CONTENT: [serialized_state[STATE_CONTENT]],
                 },
                 schema=STATE_SCHEMA.as_arrow_schema(),
             )
