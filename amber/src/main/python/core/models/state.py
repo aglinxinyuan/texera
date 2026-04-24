@@ -34,11 +34,7 @@ STATE_SCHEMA = Schema(raw_schema={STATE_CONTENT: "STRING"})
 
 def serialize_state(state: State) -> Tuple:
     return Tuple(
-        {
-            STATE_CONTENT: json.dumps(
-                _to_json_value(state), separators=(",", ":")
-            )
-        },
+        {STATE_CONTENT: json.dumps(_to_json_value(state), separators=(",", ":"))},
         schema=STATE_SCHEMA,
     )
 

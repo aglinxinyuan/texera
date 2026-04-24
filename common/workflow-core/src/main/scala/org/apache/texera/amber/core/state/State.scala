@@ -43,7 +43,12 @@ object State {
 
   def deserialize(tuple: Tuple): State = {
     val payload = tuple.getField[String](StateContent)
-    objectMapper.readTree(payload).fields().asScala.map(entry => entry.getKey -> fromJsonValue(entry.getValue)).toMap
+    objectMapper
+      .readTree(payload)
+      .fields()
+      .asScala
+      .map(entry => entry.getKey -> fromJsonValue(entry.getValue))
+      .toMap
   }
 
   private def toJsonValue(value: Any): Any =
