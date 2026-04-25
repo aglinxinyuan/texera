@@ -95,7 +95,9 @@ class NetworkOutputGateway(
   }
 
   def removeControlChannel(to: ActorVirtualIdentity): Unit = {
-    idToSequenceNums.remove(ChannelIdentity(actorId, to, isControl = true))
+    synchronized {
+      idToSequenceNums.remove(ChannelIdentity(actorId, to, isControl = true))
+    }
   }
 
 }
