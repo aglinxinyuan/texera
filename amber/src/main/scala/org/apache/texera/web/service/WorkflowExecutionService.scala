@@ -21,13 +21,14 @@ package org.apache.texera.web.service
 
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.texera.amber.core.virtualidentity.{ExecutionIdentity, WorkflowIdentity}
-import org.apache.texera.amber.core.workflow.WorkflowContext
+import org.apache.texera.amber.core.workflow.{ExecutionMode, WorkflowContext}
 import org.apache.texera.amber.engine.architecture.controller.{ControllerConfig, Workflow}
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands.EmptyRequest
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.WorkflowAggregatedState._
 import org.apache.texera.amber.engine.common.Utils
 import org.apache.texera.amber.engine.common.client.AmberClient
 import org.apache.texera.amber.engine.common.executionruntimestate.ExecutionMetadataStore
+import org.apache.texera.amber.operator.loop.LoopStartOpDesc
 import org.apache.texera.web.model.websocket.event.{
   TexeraWebSocketEvent,
   WorkflowErrorEvent,
@@ -66,7 +67,12 @@ class WorkflowExecutionService(
 ) extends SubscriptionManager
     with LazyLogging {
 
-  workflowContext.workflowSettings = request.workflowSettings
+  workflowContext.workflowSettings =
+    if (request.logicalPlan.operators.exists(_.isInstanceOf[LoopStartOpDesc])) {
+      request.workflowSettings.copy(executionMode = ExecutionMode.MATERIALIZED)
+    } else {
+      request.workflowSettings
+    }
   val wsInput = new WebsocketInput(errorHandler)
 
   addSubscription(
