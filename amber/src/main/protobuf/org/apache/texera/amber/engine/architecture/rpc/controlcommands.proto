@@ -39,19 +39,13 @@ message ControlRequest {
     TakeGlobalCheckpointRequest takeGlobalCheckpointRequest = 2;
     DebugCommandRequest debugCommandRequest = 3;
     EvaluatePythonExpressionRequest evaluatePythonExpressionRequest = 4;
-    ModifyLogicRequest modifyLogicRequest = 5;
-    RetryWorkflowRequest retryWorkflowRequest = 6;
-    ConsoleMessageTriggeredRequest consoleMessageTriggeredRequest = 8;
-    PortCompletedRequest portCompletedRequest = 9;
-    WorkerStateUpdatedRequest workerStateUpdatedRequest = 10;
-    LinkWorkersRequest linkWorkersRequest = 11;
-    JumpToOperatorRequest jumpToOperatorRequest = 12;
     RetryWorkflowRequest retryWorkflowRequest = 5;
     ConsoleMessageTriggeredRequest consoleMessageTriggeredRequest = 6;
     PortCompletedRequest portCompletedRequest = 7;
     WorkerStateUpdatedRequest workerStateUpdatedRequest = 8;
     LinkWorkersRequest linkWorkersRequest = 9;
     WorkflowReconfigureRequest workflowReconfigureRequest = 10;
+    JumpToOperatorRequest jumpToOperatorRequest = 11;
 
     // request for worker
     AddInputChannelRequest addInputChannelRequest = 50;

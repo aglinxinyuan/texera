@@ -41,6 +41,7 @@ class WorkflowExecutionCoordinator(
 ) extends LazyLogging {
 
   private val executedRegions: mutable.ListBuffer[Set[Region]] = mutable.ListBuffer()
+  private var nextRegionLevel: Option[Int] = None
 
   private val regionExecutionCoordinators
       : mutable.HashMap[RegionIdentity, RegionExecutionCoordinator] =
@@ -50,6 +51,23 @@ class WorkflowExecutionCoordinator(
 
   def setupActorRefService(actorRefService: AkkaActorRefMappingService): Unit = {
     this.actorRefService = actorRefService
+  }
+
+  private def getNextRegions: Set[Region] = {
+    val schedule = workflowScheduler.getSchedule
+    if (schedule == null) {
+      return Set.empty
+    }
+    if (nextRegionLevel.isEmpty) {
+      nextRegionLevel = Some(schedule.startingLevel)
+    }
+    nextRegionLevel
+      .filter(schedule.levelSets.contains)
+      .map { level =>
+        nextRegionLevel = Some(level + 1)
+        schedule.levelSets(level)
+      }
+      .getOrElse(Set.empty)
   }
 
   /**
@@ -82,7 +100,7 @@ class WorkflowExecutionCoordinator(
     // All existing regions are completed. Start the next region (if any).
     Future
       .collect({
-        val nextRegions = workflowScheduler.getNextRegions
+        val nextRegions = getNextRegions
         executedRegions.append(nextRegions)
         nextRegions
           .map(region => {
@@ -118,7 +136,14 @@ class WorkflowExecutionCoordinator(
   }
 
   def jumpToOperator(opId: OperatorIdentity): Unit = {
-    workflowScheduler.jumpToOperator(opId)
+    val schedule = workflowScheduler.getSchedule
+    if (schedule == null) {
+      return
+    }
+    nextRegionLevel = schedule.levelSets.collectFirst {
+      case (level, regions) if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
+        level
+    }
   }
 
 }

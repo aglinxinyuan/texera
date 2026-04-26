@@ -19,26 +19,11 @@
 
 package org.apache.texera.amber.engine.architecture.scheduling
 
-import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
-
-case class Schedule(private val levelSets: Map[Int, Set[Region]]) extends Iterator[Set[Region]] {
-  private var currentLevel = levelSets.keys.minOption.getOrElse(0)
+case class Schedule(levelSets: Map[Int, Set[Region]]) extends Iterable[Set[Region]] {
+  val startingLevel: Int = levelSets.keys.minOption.getOrElse(0)
 
   def getRegions: List[Region] = levelSets.values.flatten.toList
 
-  override def hasNext: Boolean = levelSets.isDefinedAt(currentLevel)
-
-  override def next(): Set[Region] = {
-    val regions = levelSets(currentLevel)
-    currentLevel += 1
-    regions
-  }
-
-  def jumpToOperator(opId: OperatorIdentity): Unit =
-    levelSets
-      .collectFirst {
-        case (level, regions) if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
-          level
-      }
-      .foreach(currentLevel = _)
+  override def iterator: Iterator[Set[Region]] =
+    levelSets.keys.toSeq.sorted.iterator.map(levelSets)
 }

@@ -21,12 +21,15 @@ package org.apache.texera.amber.engine.architecture.scheduling
 
 import org.apache.texera.amber.core.executor.OpExecInitInfo
 import org.apache.texera.amber.core.virtualidentity.{
+  ActorVirtualIdentity,
   ExecutionIdentity,
   OperatorIdentity,
   PhysicalOpIdentity,
   WorkflowIdentity
 }
 import org.apache.texera.amber.core.workflow.PhysicalOp
+import org.apache.texera.amber.engine.architecture.controller.WorkflowScheduler
+import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class ScheduleSpec extends AnyFlatSpec {
@@ -41,7 +44,20 @@ class ScheduleSpec extends AnyFlatSpec {
     Region(RegionIdentity(regionId), Set(physicalOp), Set.empty)
   }
 
-  "Schedule.jumpToOperator" should "make the next scheduled region contain the target operator" in {
+  private def setSchedule(workflowScheduler: WorkflowScheduler, schedule: Schedule): Unit = {
+    val scheduleField = classOf[WorkflowScheduler].getDeclaredField("schedule")
+    scheduleField.setAccessible(true)
+    scheduleField.set(workflowScheduler, schedule)
+  }
+
+  private def getNextRegions(coordinator: WorkflowExecutionCoordinator): Set[Region] = {
+    val getNextRegionsMethod =
+      classOf[WorkflowExecutionCoordinator].getDeclaredMethod("getNextRegions")
+    getNextRegionsMethod.setAccessible(true)
+    getNextRegionsMethod.invoke(coordinator).asInstanceOf[Set[Region]]
+  }
+
+  "WorkflowExecutionCoordinator.jumpToOperator" should "make the next scheduled region contain the target operator" in {
     val firstRegion = region(1, "first")
     val secondRegion = region(2, "second")
     val thirdRegion = region(3, "third")
@@ -52,12 +68,17 @@ class ScheduleSpec extends AnyFlatSpec {
         2 -> Set(thirdRegion)
       )
     )
+    val workflowScheduler =
+      new WorkflowScheduler(null, ActorVirtualIdentity("controller"))
+    setSchedule(workflowScheduler, schedule)
+    val coordinator =
+      new WorkflowExecutionCoordinator(workflowScheduler, WorkflowExecution(), null, null)
 
-    assert(schedule.next() == Set(firstRegion))
-    assert(schedule.next() == Set(secondRegion))
+    assert(getNextRegions(coordinator) == Set(firstRegion))
+    assert(getNextRegions(coordinator) == Set(secondRegion))
 
-    schedule.jumpToOperator(OperatorIdentity("first"))
+    coordinator.jumpToOperator(OperatorIdentity("first"))
 
-    assert(schedule.next() == Set(firstRegion))
+    assert(getNextRegions(coordinator) == Set(firstRegion))
   }
 }

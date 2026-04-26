@@ -102,7 +102,7 @@ class ControlRequest(betterproto.Message):
         betterproto.message_field(10, group="sealed_value")
     )
     jump_to_operator_request: "JumpToOperatorRequest" = betterproto.message_field(
-        12, group="sealed_value"
+        11, group="sealed_value"
     )
     add_input_channel_request: "AddInputChannelRequest" = betterproto.message_field(
         50, group="sealed_value"
