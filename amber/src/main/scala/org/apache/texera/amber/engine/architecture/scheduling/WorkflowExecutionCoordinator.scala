@@ -27,14 +27,14 @@ import org.apache.texera.amber.engine.architecture.common.{
   AkkaActorRefMappingService,
   AkkaActorService
 }
-import org.apache.texera.amber.engine.architecture.controller.{ControllerConfig, WorkflowScheduler}
+import org.apache.texera.amber.engine.architecture.controller.ControllerConfig
 import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 
 import scala.collection.mutable
 
 class WorkflowExecutionCoordinator(
-    workflowScheduler: WorkflowScheduler,
+    getSchedule: () => Schedule,
     workflowExecution: WorkflowExecution,
     controllerConfig: ControllerConfig,
     asyncRPCClient: AsyncRPCClient
@@ -54,7 +54,7 @@ class WorkflowExecutionCoordinator(
   }
 
   private[scheduling] def getNextRegions: Set[Region] = {
-    val schedule = workflowScheduler.getSchedule
+    val schedule = getSchedule()
     if (schedule == null) {
       return Set.empty
     }
@@ -135,8 +135,8 @@ class WorkflowExecutionCoordinator(
       .toSet
   }
 
-  def jumpToOperator(opId: OperatorIdentity): Unit = {
-    val schedule = workflowScheduler.getSchedule
+  def jumpToRegionContainingOperator(opId: OperatorIdentity): Unit = {
+    val schedule = getSchedule()
     if (schedule == null) {
       return
     }

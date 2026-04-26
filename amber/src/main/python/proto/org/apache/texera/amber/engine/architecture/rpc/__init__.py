@@ -101,7 +101,7 @@ class ControlRequest(betterproto.Message):
     workflow_reconfigure_request: "WorkflowReconfigureRequest" = (
         betterproto.message_field(10, group="sealed_value")
     )
-    jump_to_operator_request: "JumpToOperatorRequest" = betterproto.message_field(
+    jump_to_operator_region_request: "JumpToOperatorRegionRequest" = betterproto.message_field(
         11, group="sealed_value"
     )
     add_input_channel_request: "AddInputChannelRequest" = betterproto.message_field(
@@ -389,7 +389,7 @@ class QueryStatisticsRequest(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
-class JumpToOperatorRequest(betterproto.Message):
+class JumpToOperatorRegionRequest(betterproto.Message):
     target_operator_id: "___core__.OperatorIdentity" = betterproto.message_field(1)
 
 
@@ -1259,17 +1259,17 @@ class ControllerServiceStub(betterproto.ServiceStub):
             metadata=metadata,
         )
 
-    async def jump_to_operator(
+    async def jump_to_operator_region(
         self,
-        jump_to_operator_request: "JumpToOperatorRequest",
+        jump_to_operator_region_request: "JumpToOperatorRegionRequest",
         *,
         timeout: Optional[float] = None,
         deadline: Optional["Deadline"] = None,
         metadata: Optional["MetadataLike"] = None
     ) -> "EmptyReturn":
         return await self._unary_unary(
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/JumpToOperator",
-            jump_to_operator_request,
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/JumpToOperatorRegion",
+            jump_to_operator_region_request,
             EmptyReturn,
             timeout=timeout,
             deadline=deadline,
@@ -1948,8 +1948,8 @@ class ControllerServiceBase(ServiceBase):
     ) -> "EmptyReturn":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
-    async def jump_to_operator(
-        self, jump_to_operator_request: "JumpToOperatorRequest"
+    async def jump_to_operator_region(
+        self, jump_to_operator_region_request: "JumpToOperatorRegionRequest"
     ) -> "EmptyReturn":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
@@ -2062,11 +2062,11 @@ class ControllerServiceBase(ServiceBase):
         response = await self.worker_execution_completed(request)
         await stream.send_message(response)
 
-    async def __rpc_jump_to_operator(
-        self, stream: "grpclib.server.Stream[JumpToOperatorRequest, EmptyReturn]"
+    async def __rpc_jump_to_operator_region(
+        self, stream: "grpclib.server.Stream[JumpToOperatorRegionRequest, EmptyReturn]"
     ) -> None:
         request = await stream.recv_message()
-        response = await self.jump_to_operator(request)
+        response = await self.jump_to_operator_region(request)
         await stream.send_message(response)
 
     async def __rpc_link_workers(
@@ -2171,10 +2171,10 @@ class ControllerServiceBase(ServiceBase):
                 EmptyRequest,
                 EmptyReturn,
             ),
-            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/JumpToOperator": grpclib.const.Handler(
-                self.__rpc_jump_to_operator,
+            "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/JumpToOperatorRegion": grpclib.const.Handler(
+                self.__rpc_jump_to_operator_region,
                 grpclib.const.Cardinality.UNARY_UNARY,
-                JumpToOperatorRequest,
+                JumpToOperatorRegionRequest,
                 EmptyReturn,
             ),
             "/org.apache.texera.amber.engine.architecture.rpc.ControllerService/LinkWorkers": grpclib.const.Handler(

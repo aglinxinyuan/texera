@@ -23,19 +23,19 @@ import com.twitter.util.Future
 import org.apache.texera.amber.engine.architecture.controller.ControllerAsyncRPCHandlerInitializer
 import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{
   AsyncRPCContext,
-  JumpToOperatorRequest
+  JumpToOperatorRegionRequest
 }
 import org.apache.texera.amber.engine.architecture.rpc.controlreturns.EmptyReturn
 
 /** Requests the scheduler to continue from the region containing the target operator. */
-trait JumpToOperatorHandler {
+trait JumpToOperatorRegionHandler {
   this: ControllerAsyncRPCHandlerInitializer =>
 
-  override def jumpToOperator(
-      msg: JumpToOperatorRequest,
+  override def jumpToOperatorRegion(
+      msg: JumpToOperatorRegionRequest,
       ctx: AsyncRPCContext
   ): Future[EmptyReturn] = {
-    cp.workflowExecutionCoordinator.jumpToOperator(msg.targetOperatorId)
+    cp.workflowExecutionCoordinator.jumpToRegionContainingOperator(msg.targetOperatorId)
     EmptyReturn()
   }
 }

@@ -21,18 +21,16 @@ package org.apache.texera.amber.engine.architecture.scheduling
 
 import org.apache.texera.amber.core.executor.OpExecInitInfo
 import org.apache.texera.amber.core.virtualidentity.{
-  ActorVirtualIdentity,
   ExecutionIdentity,
   OperatorIdentity,
   PhysicalOpIdentity,
   WorkflowIdentity
 }
 import org.apache.texera.amber.core.workflow.PhysicalOp
-import org.apache.texera.amber.engine.architecture.controller.WorkflowScheduler
 import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.scalatest.flatspec.AnyFlatSpec
 
-class ScheduleSpec extends AnyFlatSpec {
+class WorkflowExecutionCoordinatorSpec extends AnyFlatSpec {
 
   private def region(regionId: Long, opId: String): Region = {
     val physicalOp = PhysicalOp(
@@ -44,13 +42,7 @@ class ScheduleSpec extends AnyFlatSpec {
     Region(RegionIdentity(regionId), Set(physicalOp), Set.empty)
   }
 
-  private def setSchedule(workflowScheduler: WorkflowScheduler, schedule: Schedule): Unit = {
-    val scheduleField = classOf[WorkflowScheduler].getDeclaredField("schedule")
-    scheduleField.setAccessible(true)
-    scheduleField.set(workflowScheduler, schedule)
-  }
-
-  "WorkflowExecutionCoordinator.jumpToOperator" should "make the next scheduled region contain the target operator" in {
+  "WorkflowExecutionCoordinator.jumpToRegionContainingOperator" should "make the next scheduled region contain the target operator's region" in {
     val firstRegion = region(1, "first")
     val secondRegion = region(2, "second")
     val thirdRegion = region(3, "third")
@@ -61,16 +53,13 @@ class ScheduleSpec extends AnyFlatSpec {
         2 -> Set(thirdRegion)
       )
     )
-    val workflowScheduler =
-      new WorkflowScheduler(null, ActorVirtualIdentity("controller"))
-    setSchedule(workflowScheduler, schedule)
     val coordinator =
-      new WorkflowExecutionCoordinator(workflowScheduler, WorkflowExecution(), null, null)
+      new WorkflowExecutionCoordinator(() => schedule, WorkflowExecution(), null, null)
 
     assert(coordinator.getNextRegions == Set(firstRegion))
     assert(coordinator.getNextRegions == Set(secondRegion))
 
-    coordinator.jumpToOperator(OperatorIdentity("first"))
+    coordinator.jumpToRegionContainingOperator(OperatorIdentity("first"))
 
     assert(coordinator.getNextRegions == Set(firstRegion))
   }

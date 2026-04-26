@@ -44,7 +44,7 @@ class ControllerProcessor(
   val workflowScheduler: WorkflowScheduler =
     new WorkflowScheduler(workflowContext, actorId)
   val workflowExecutionCoordinator: WorkflowExecutionCoordinator = new WorkflowExecutionCoordinator(
-    workflowScheduler,
+    () => this.workflowScheduler.getSchedule,
     workflowExecution,
     controllerConfig,
     asyncRPCClient
