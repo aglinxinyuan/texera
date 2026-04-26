@@ -69,7 +69,8 @@ class WorkflowExecutionCoordinatorSpec extends AnyFlatSpec {
             .getOrElse(Set.empty),
         opId =>
           nextRegionLevel(0) = schedule.levelSets.collectFirst {
-            case (level, regions) if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
+            case (level, regions)
+                if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
               level
           },
         WorkflowExecution(),
