@@ -33,6 +33,8 @@ import org.apache.texera.amber.engine.architecture.scheduling.WorkflowExecutionC
 import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.MainThreadDelegateMessage
 import org.apache.texera.amber.engine.common.ambermessage.WorkflowFIFOMessage
 
+import scala.collection.mutable
+
 class ControllerProcessor(
     workflowContext: WorkflowContext,
     controllerConfig: ControllerConfig,
@@ -43,8 +45,34 @@ class ControllerProcessor(
   val workflowExecution: WorkflowExecution = WorkflowExecution()
   val workflowScheduler: WorkflowScheduler =
     new WorkflowScheduler(workflowContext, actorId)
+  private val nextRegionLevel: mutable.ArrayBuffer[Option[Int]] = mutable.ArrayBuffer(None)
   val workflowExecutionCoordinator: WorkflowExecutionCoordinator = new WorkflowExecutionCoordinator(
-    () => this.workflowScheduler.getSchedule,
+    () => {
+      val schedule = this.workflowScheduler.getSchedule
+      if (schedule == null) {
+        Set.empty
+      } else {
+        if (nextRegionLevel(0).isEmpty) {
+          nextRegionLevel(0) = Some(schedule.startingLevel)
+        }
+        nextRegionLevel(0)
+          .filter(schedule.levelSets.contains)
+          .map { level =>
+            nextRegionLevel(0) = Some(level + 1)
+            schedule.levelSets(level)
+          }
+          .getOrElse(Set.empty)
+      }
+    },
+    opId => {
+      val schedule = this.workflowScheduler.getSchedule
+      if (schedule != null) {
+        nextRegionLevel(0) = schedule.levelSets.collectFirst {
+          case (level, regions) if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
+            level
+        }
+      }
+    },
     workflowExecution,
     controllerConfig,
     asyncRPCClient

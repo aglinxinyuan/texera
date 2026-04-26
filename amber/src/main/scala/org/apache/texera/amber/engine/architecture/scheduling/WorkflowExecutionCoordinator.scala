@@ -34,14 +34,14 @@ import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 import scala.collection.mutable
 
 class WorkflowExecutionCoordinator(
-    getSchedule: () => Schedule,
+    getNextRegions: () => Set[Region],
+    jumpToRegionContainingOperatorCallback: OperatorIdentity => Unit,
     workflowExecution: WorkflowExecution,
     controllerConfig: ControllerConfig,
     asyncRPCClient: AsyncRPCClient
 ) extends LazyLogging {
 
   private val executedRegions: mutable.ListBuffer[Set[Region]] = mutable.ListBuffer()
-  private var nextRegionLevel: Option[Int] = None
 
   private val regionExecutionCoordinators
       : mutable.HashMap[RegionIdentity, RegionExecutionCoordinator] =
@@ -53,22 +53,7 @@ class WorkflowExecutionCoordinator(
     this.actorRefService = actorRefService
   }
 
-  private[scheduling] def getNextRegions: Set[Region] = {
-    val schedule = getSchedule()
-    if (schedule == null) {
-      return Set.empty
-    }
-    if (nextRegionLevel.isEmpty) {
-      nextRegionLevel = Some(schedule.startingLevel)
-    }
-    nextRegionLevel
-      .filter(schedule.levelSets.contains)
-      .map { level =>
-        nextRegionLevel = Some(level + 1)
-        schedule.levelSets(level)
-      }
-      .getOrElse(Set.empty)
-  }
+  private[scheduling] def pullNextRegions: Set[Region] = getNextRegions()
 
   /**
     * Each invocation first syncs the internal statuses of each exisiting `RegionExecutionCoordintor`, after which each
@@ -100,7 +85,7 @@ class WorkflowExecutionCoordinator(
     // All existing regions are completed. Start the next region (if any).
     Future
       .collect({
-        val nextRegions = getNextRegions
+        val nextRegions = pullNextRegions
         executedRegions.append(nextRegions)
         nextRegions
           .map(region => {
@@ -136,14 +121,7 @@ class WorkflowExecutionCoordinator(
   }
 
   def jumpToRegionContainingOperator(opId: OperatorIdentity): Unit = {
-    val schedule = getSchedule()
-    if (schedule == null) {
-      return
-    }
-    nextRegionLevel = schedule.levelSets.collectFirst {
-      case (level, regions) if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
-        level
-    }
+    jumpToRegionContainingOperatorCallback(opId)
   }
 
 }
