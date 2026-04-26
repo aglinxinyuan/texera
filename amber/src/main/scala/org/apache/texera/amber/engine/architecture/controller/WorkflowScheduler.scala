@@ -23,7 +23,6 @@ import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
 import org.apache.texera.amber.core.workflow.{PhysicalPlan, WorkflowContext}
 import org.apache.texera.amber.engine.architecture.scheduling.{
   CostBasedScheduleGenerator,
-  Region,
   Schedule
 }
 
@@ -33,7 +32,6 @@ class WorkflowScheduler(
 ) extends java.io.Serializable {
   var physicalPlan: PhysicalPlan = _
   private var schedule: Schedule = _
-  private var nextRegionLevel: Option[Int] = None
 
   def getSchedule: Schedule = schedule
 
@@ -51,15 +49,5 @@ class WorkflowScheduler(
       ).generate()
     this.schedule = generatedSchedule
     this.physicalPlan = updatedPhysicalPlan
-    this.nextRegionLevel = Some(generatedSchedule.startingLevel)
   }
-
-  def getNextRegions: Set[Region] =
-    nextRegionLevel
-      .filter(schedule.levelSets.contains)
-      .map { level =>
-        nextRegionLevel = Some(level + 1)
-        schedule.levelSets(level)
-      }
-      .getOrElse(Set.empty)
 }

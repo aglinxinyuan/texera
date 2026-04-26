@@ -53,7 +53,7 @@ class WorkflowExecutionCoordinator(
     this.actorRefService = actorRefService
   }
 
-  private def getNextRegions: Set[Region] = {
+  private[scheduling] def getNextRegions: Set[Region] = {
     val schedule = workflowScheduler.getSchedule
     if (schedule == null) {
       return Set.empty

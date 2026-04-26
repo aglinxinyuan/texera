@@ -50,13 +50,6 @@ class ScheduleSpec extends AnyFlatSpec {
     scheduleField.set(workflowScheduler, schedule)
   }
 
-  private def getNextRegions(coordinator: WorkflowExecutionCoordinator): Set[Region] = {
-    val getNextRegionsMethod =
-      classOf[WorkflowExecutionCoordinator].getDeclaredMethod("getNextRegions")
-    getNextRegionsMethod.setAccessible(true)
-    getNextRegionsMethod.invoke(coordinator).asInstanceOf[Set[Region]]
-  }
-
   "WorkflowExecutionCoordinator.jumpToOperator" should "make the next scheduled region contain the target operator" in {
     val firstRegion = region(1, "first")
     val secondRegion = region(2, "second")
@@ -74,11 +67,11 @@ class ScheduleSpec extends AnyFlatSpec {
     val coordinator =
       new WorkflowExecutionCoordinator(workflowScheduler, WorkflowExecution(), null, null)
 
-    assert(getNextRegions(coordinator) == Set(firstRegion))
-    assert(getNextRegions(coordinator) == Set(secondRegion))
+    assert(coordinator.getNextRegions == Set(firstRegion))
+    assert(coordinator.getNextRegions == Set(secondRegion))
 
     coordinator.jumpToOperator(OperatorIdentity("first"))
 
-    assert(getNextRegions(coordinator) == Set(firstRegion))
+    assert(coordinator.getNextRegions == Set(firstRegion))
   }
 }
