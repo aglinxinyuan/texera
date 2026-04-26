@@ -21,10 +21,7 @@ package org.apache.texera.amber.engine.architecture.controller
 
 import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
 import org.apache.texera.amber.core.workflow.{PhysicalPlan, WorkflowContext}
-import org.apache.texera.amber.engine.architecture.scheduling.{
-  CostBasedScheduleGenerator,
-  Schedule
-}
+import org.apache.texera.amber.engine.architecture.scheduling.{CostBasedScheduleGenerator, Schedule}
 
 class WorkflowScheduler(
     workflowContext: WorkflowContext,
