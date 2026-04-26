@@ -25,7 +25,6 @@ import "org/apache/texera/amber/engine/architecture/worker/statistics.proto";
 import "org/apache/texera/amber/engine/architecture/sendsemantics/partitionings.proto";
 import "scalapb/scalapb.proto";
 import "google/protobuf/timestamp.proto";
-import "google/protobuf/any.proto";
 
 option (scalapb.options) = {
   scope: FILE,
@@ -47,6 +46,12 @@ message ControlRequest {
     WorkerStateUpdatedRequest workerStateUpdatedRequest = 10;
     LinkWorkersRequest linkWorkersRequest = 11;
     JumpToOperatorRequest jumpToOperatorRequest = 12;
+    RetryWorkflowRequest retryWorkflowRequest = 5;
+    ConsoleMessageTriggeredRequest consoleMessageTriggeredRequest = 6;
+    PortCompletedRequest portCompletedRequest = 7;
+    WorkerStateUpdatedRequest workerStateUpdatedRequest = 8;
+    LinkWorkersRequest linkWorkersRequest = 9;
+    WorkflowReconfigureRequest workflowReconfigureRequest = 10;
 
     // request for worker
     AddInputChannelRequest addInputChannelRequest = 50;
@@ -120,7 +125,7 @@ message TakeGlobalCheckpointRequest {
 }
 
 message WorkflowReconfigureRequest{
-  ModifyLogicRequest reconfiguration = 1 [(scalapb.field).no_box = true];
+  repeated UpdateExecutorRequest reconfiguration = 1;
   string reconfigurationId = 2;
 }
 
@@ -133,10 +138,6 @@ message DebugCommandRequest {
 message EvaluatePythonExpressionRequest {
   string expression = 1;
   string operatorId = 2;
-}
-
-message ModifyLogicRequest {
-  repeated UpdateExecutorRequest updateRequest = 1;
 }
 
 message RetryWorkflowRequest {
@@ -261,8 +262,7 @@ message InitializeExecutorRequest {
 
 message UpdateExecutorRequest {
   core.PhysicalOpIdentity targetOpId = 1 [(scalapb.field).no_box = true];
-  google.protobuf.Any newExecutor = 2 [(scalapb.field).no_box = true];
-  google.protobuf.Any stateTransferFunc = 3;
+  core.OpExecInitInfo newExecInitInfo = 2;
 }
 
 message PrepareCheckpointRequest{
