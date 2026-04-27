@@ -55,7 +55,7 @@ class ControllerProcessor(
             nextRegionLevel = Some(schedule.startingLevel)
           }
           nextRegionLevel
-          .filter(schedule.levelSets.contains)
+            .filter(schedule.levelSets.contains)
             .map { level =>
               nextRegionLevel = Some(level + 1)
               schedule.levelSets(level)
