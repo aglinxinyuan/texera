@@ -34,12 +34,13 @@ import org.apache.texera.amber.engine.common.rpc.AsyncRPCClient
 import scala.collection.mutable
 
 class WorkflowExecutionCoordinator(
-    getNextRegions: () => Set[Region],
-    jumpToRegionContainingOperatorCallback: OperatorIdentity => Unit,
+    initialSchedule: Schedule,
     workflowExecution: WorkflowExecution,
     controllerConfig: ControllerConfig,
     asyncRPCClient: AsyncRPCClient
 ) extends LazyLogging {
+
+  private var schedule: Schedule = initialSchedule
 
   private val executedRegions: mutable.ListBuffer[Set[Region]] = mutable.ListBuffer()
 
@@ -53,7 +54,15 @@ class WorkflowExecutionCoordinator(
     this.actorRefService = actorRefService
   }
 
-  private[scheduling] def pullNextRegions: Set[Region] = getNextRegions()
+  def replaceSchedule(newSchedule: Schedule): Unit = {
+    schedule = newSchedule
+  }
+
+  private[scheduling] def pullNextRegions: Set[Region] = {
+    val nextRegions = schedule.getCurrentRegions
+    schedule = schedule.advance
+    nextRegions
+  }
 
   /**
     * Each invocation first syncs the internal statuses of each exisiting `RegionExecutionCoordintor`, after which each
@@ -127,7 +136,9 @@ class WorkflowExecutionCoordinator(
   }
 
   def jumpToRegionContainingOperator(opId: OperatorIdentity): Unit = {
-    jumpToRegionContainingOperatorCallback(opId)
+    schedule.getLevelIndexOfOperator(opId).foreach { levelIndex =>
+      schedule = schedule.rewriteExecutionFrom(levelIndex)
+    }
   }
 
 }

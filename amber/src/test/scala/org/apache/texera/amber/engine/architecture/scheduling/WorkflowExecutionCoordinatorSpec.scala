@@ -30,8 +30,6 @@ import org.apache.texera.amber.core.workflow.PhysicalOp
 import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.scalatest.flatspec.AnyFlatSpec
 
-import scala.collection.mutable
-
 class WorkflowExecutionCoordinatorSpec extends AnyFlatSpec {
 
   private def region(regionId: Long, opId: String): Region = {
@@ -55,24 +53,9 @@ class WorkflowExecutionCoordinatorSpec extends AnyFlatSpec {
         2 -> Set(thirdRegion)
       )
     )
-    val nextRegionLevel: mutable.ArrayBuffer[Option[Int]] = mutable.ArrayBuffer(None)
     val coordinator =
       new WorkflowExecutionCoordinator(
-        () =>
-          nextRegionLevel(0)
-            .orElse(Some(schedule.startingLevel))
-            .filter(schedule.levelSets.contains)
-            .map { level =>
-              nextRegionLevel(0) = Some(level + 1)
-              schedule.levelSets(level)
-            }
-            .getOrElse(Set.empty),
-        opId =>
-          nextRegionLevel(0) = schedule.levelSets.collectFirst {
-            case (level, regions)
-                if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
-              level
-          },
+        schedule,
         WorkflowExecution(),
         null,
         null

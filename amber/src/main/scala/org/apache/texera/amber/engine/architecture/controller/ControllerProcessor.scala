@@ -29,7 +29,7 @@ import org.apache.texera.amber.engine.architecture.common.{
 }
 import org.apache.texera.amber.engine.architecture.controller.execution.WorkflowExecution
 import org.apache.texera.amber.engine.architecture.logreplay.ReplayLogManager
-import org.apache.texera.amber.engine.architecture.scheduling.WorkflowExecutionCoordinator
+import org.apache.texera.amber.engine.architecture.scheduling.{Schedule, WorkflowExecutionCoordinator}
 import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.MainThreadDelegateMessage
 import org.apache.texera.amber.engine.common.ambermessage.WorkflowFIFOMessage
 
@@ -43,50 +43,16 @@ class ControllerProcessor(
   val workflowExecution: WorkflowExecution = WorkflowExecution()
   val workflowScheduler: WorkflowScheduler =
     new WorkflowScheduler(workflowContext, actorId)
-  private var nextRegionLevel: Option[Int] = None
-
-  /**
-    * The coordinator consumes regions through this callback rather than reading the schedule directly.
-    * The controller owns the cursor so it can reset the next schedule level when control flow requests
-    * jumping back to the region containing a target operator.
-    */
-  private def getNextScheduledRegions(): Set[org.apache.texera.amber.engine.architecture.scheduling.Region] = {
-    Option(this.workflowScheduler.getSchedule)
-      .map { schedule =>
-        if (nextRegionLevel.isEmpty) {
-          nextRegionLevel = Some(schedule.startingLevel)
-        }
-        nextRegionLevel
-          .filter(schedule.levelSets.contains)
-          .map { level =>
-            nextRegionLevel = Some(level + 1)
-            schedule.levelSets(level)
-          }
-          .getOrElse(Set.empty)
-      }
-      .getOrElse(Set.empty)
-  }
-
-  /**
-    * Resets the schedule cursor so the next coordinator pull starts from the region containing the
-    * given operator. Schedule precomputes the operator-to-level mapping because loop control flow may
-    * jump repeatedly and should avoid rescanning all level sets on each jump.
-    */
-  private def jumpToRegionContainingOperator(
-      opId: org.apache.texera.amber.core.virtualidentity.OperatorIdentity
-  ): Unit = {
-    Option(this.workflowScheduler.getSchedule).foreach { schedule =>
-      nextRegionLevel = schedule.getLevelOfOperator(opId)
-    }
-  }
-
   val workflowExecutionCoordinator: WorkflowExecutionCoordinator = new WorkflowExecutionCoordinator(
-    getNextScheduledRegions,
-    jumpToRegionContainingOperator,
+    Schedule(Map.empty),
     workflowExecution,
     controllerConfig,
     asyncRPCClient
   )
+
+  def updateExecutionSchedule(schedule: Schedule): Unit = {
+    workflowExecutionCoordinator.replaceSchedule(schedule)
+  }
 
   private val initializer = new ControllerAsyncRPCHandlerInitializer(this)
 
