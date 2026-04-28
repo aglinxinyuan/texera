@@ -43,36 +43,46 @@ class ControllerProcessor(
   val workflowExecution: WorkflowExecution = WorkflowExecution()
   val workflowScheduler: WorkflowScheduler =
     new WorkflowScheduler(workflowContext, actorId)
-  // The coordinator consumes regions through callbacks rather than reading Schedule directly.
-  // This cursor tracks the next ranked level to execute and can be reset when control flow
-  // requests jumping back to the region containing a target operator.
   private var nextRegionLevel: Option[Int] = None
-  val workflowExecutionCoordinator: WorkflowExecutionCoordinator = new WorkflowExecutionCoordinator(
-    () => {
-      Option(this.workflowScheduler.getSchedule)
-        .map { schedule =>
-          if (nextRegionLevel.isEmpty) {
-            nextRegionLevel = Some(schedule.startingLevel)
+
+  /**
+    * The coordinator consumes regions through this callback rather than reading the schedule directly.
+    * The controller owns the cursor so it can reset the next schedule level when control flow requests
+    * jumping back to the region containing a target operator.
+    */
+  private def getNextScheduledRegions(): Set[org.apache.texera.amber.engine.architecture.scheduling.Region] = {
+    Option(this.workflowScheduler.getSchedule)
+      .map { schedule =>
+        if (nextRegionLevel.isEmpty) {
+          nextRegionLevel = Some(schedule.startingLevel)
+        }
+        nextRegionLevel
+          .filter(schedule.levelSets.contains)
+          .map { level =>
+            nextRegionLevel = Some(level + 1)
+            schedule.levelSets(level)
           }
-          nextRegionLevel
-            .filter(schedule.levelSets.contains)
-            .map { level =>
-              nextRegionLevel = Some(level + 1)
-              schedule.levelSets(level)
-            }
-            .getOrElse(Set.empty)
-        }
-        .getOrElse(Set.empty)
-    },
-    opId => {
-      Option(this.workflowScheduler.getSchedule).foreach { schedule =>
-        nextRegionLevel = schedule.levelSets.collectFirst {
-          case (level, regions)
-              if regions.exists(_.getOperators.exists(_.id.logicalOpId == opId)) =>
-            level
-        }
+          .getOrElse(Set.empty)
       }
-    },
+      .getOrElse(Set.empty)
+  }
+
+  /**
+    * Resets the schedule cursor so the next coordinator pull starts from the region containing the
+    * given operator. Schedule precomputes the operator-to-level mapping because loop control flow may
+    * jump repeatedly and should avoid rescanning all level sets on each jump.
+    */
+  private def jumpToRegionContainingOperator(
+      opId: org.apache.texera.amber.core.virtualidentity.OperatorIdentity
+  ): Unit = {
+    Option(this.workflowScheduler.getSchedule).foreach { schedule =>
+      nextRegionLevel = schedule.getLevelOfOperator(opId)
+    }
+  }
+
+  val workflowExecutionCoordinator: WorkflowExecutionCoordinator = new WorkflowExecutionCoordinator(
+    getNextScheduledRegions,
+    jumpToRegionContainingOperator,
     workflowExecution,
     controllerConfig,
     asyncRPCClient
