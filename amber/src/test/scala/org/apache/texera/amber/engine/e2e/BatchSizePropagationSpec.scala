@@ -25,7 +25,6 @@ import org.apache.pekko.util.Timeout
 import org.apache.texera.amber.clustering.SingleNodeListener
 import org.apache.texera.amber.core.workflow.{PortIdentity, WorkflowContext, WorkflowSettings}
 import org.apache.texera.amber.engine.architecture.controller._
-import org.apache.texera.amber.engine.architecture.scheduling.Schedule
 import org.apache.texera.amber.engine.architecture.sendsemantics.partitionings._
 import org.apache.texera.amber.engine.common.virtualidentity.util.CONTROLLER
 import org.apache.texera.amber.engine.e2e.TestUtils.buildWorkflow
@@ -55,10 +54,11 @@ class BatchSizePropagationSpec
   }
 
   def verifyBatchSizeInPartitioning(
-      schedule: Schedule,
+      workflowScheduler: WorkflowScheduler,
       expectedBatchSize: Int
   ): Unit = {
-    schedule.foreach { nextRegions =>
+    var nextRegions = workflowScheduler.getNextRegions
+    while (nextRegions.nonEmpty) {
       nextRegions.foreach { region =>
         region.resourceConfig.foreach { resourceConfig =>
           resourceConfig.linkConfigs.foreach {
@@ -112,6 +112,7 @@ class BatchSizePropagationSpec
           }
         }
       }
+      nextRegions = workflowScheduler.getNextRegions
     }
   }
 
@@ -134,7 +135,7 @@ class BatchSizePropagationSpec
     val workflowScheduler = new WorkflowScheduler(context, CONTROLLER)
     workflowScheduler.updateSchedule(workflow.physicalPlan)
 
-    verifyBatchSizeInPartitioning(workflowScheduler.getSchedule, 1)
+    verifyBatchSizeInPartitioning(workflowScheduler, 1)
   }
 
   "Engine" should "propagate the correct batch size for headerlessCsv->keyword workflow" in {
@@ -164,7 +165,7 @@ class BatchSizePropagationSpec
     val workflowScheduler = new WorkflowScheduler(context, CONTROLLER)
     workflowScheduler.updateSchedule(workflow.physicalPlan)
 
-    verifyBatchSizeInPartitioning(workflowScheduler.getSchedule, 500)
+    verifyBatchSizeInPartitioning(workflowScheduler, 500)
   }
 
   "Engine" should "propagate the correct batch size for csv->keyword->count workflow" in {
@@ -202,7 +203,7 @@ class BatchSizePropagationSpec
     val workflowScheduler = new WorkflowScheduler(context, CONTROLLER)
     workflowScheduler.updateSchedule(workflow.physicalPlan)
 
-    verifyBatchSizeInPartitioning(workflowScheduler.getSchedule, 100)
+    verifyBatchSizeInPartitioning(workflowScheduler, 100)
   }
 
   "Engine" should "propagate the correct batch size for csv->keyword->averageAndGroupBy workflow" in {
@@ -243,7 +244,7 @@ class BatchSizePropagationSpec
     val workflowScheduler = new WorkflowScheduler(context, CONTROLLER)
     workflowScheduler.updateSchedule(workflow.physicalPlan)
 
-    verifyBatchSizeInPartitioning(workflowScheduler.getSchedule, 300)
+    verifyBatchSizeInPartitioning(workflowScheduler, 300)
   }
 
   "Engine" should "propagate the correct batch size for csv->(csv->)->join workflow" in {
@@ -284,7 +285,7 @@ class BatchSizePropagationSpec
     val workflowScheduler = new WorkflowScheduler(context, CONTROLLER)
     workflowScheduler.updateSchedule(workflow.physicalPlan)
 
-    verifyBatchSizeInPartitioning(workflowScheduler.getSchedule, 1)
+    verifyBatchSizeInPartitioning(workflowScheduler, 1)
   }
 
 }

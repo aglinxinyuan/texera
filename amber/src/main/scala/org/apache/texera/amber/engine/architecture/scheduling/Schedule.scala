@@ -22,48 +22,38 @@ package org.apache.texera.amber.engine.architecture.scheduling
 import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
 
 case class Schedule(
-    levelSets: Map[Int, Set[Region]],
-    baseLevels: Vector[Int] = Vector.empty,
-    executionLevels: Vector[Int] = Vector.empty,
-    currentLevelIndex: Int = 0
-) extends Iterable[Set[Region]] {
-  private val normalizedBaseLevels =
-    if (baseLevels.nonEmpty || levelSets.isEmpty) baseLevels else levelSets.keys.toVector.sorted
+    private val levelSets: Map[Int, Set[Region]],
+    executionLevels: Vector[Int] = Vector.empty
+) extends Iterator[Set[Region]] {
+  private val baseLevels = levelSets.keys.toVector.sorted
   private val normalizedExecutionLevels =
-    if (executionLevels.nonEmpty || normalizedBaseLevels.isEmpty) executionLevels else normalizedBaseLevels
+    if (executionLevels.nonEmpty || baseLevels.isEmpty) executionLevels else baseLevels
   private val operatorLevelIndices = levelSets.iterator.flatMap { case (level, regions) =>
-    val levelIndex = normalizedBaseLevels.indexOf(level)
+    val levelIndex = baseLevels.indexOf(level)
     regions.iterator.flatMap(region => region.getOperators.map(_.id.logicalOpId -> levelIndex))
   }.toMap
-
-  val startingLevel: Int = normalizedBaseLevels.headOption.getOrElse(0)
+  private var currentLevelIndex = 0
 
   def getRegions: List[Region] = levelSets.values.flatten.toList
 
-  def getCurrentRegions: Set[Region] =
-    normalizedExecutionLevels
+  def getLevelIndexOfOperator(opId: OperatorIdentity): Option[Int] = operatorLevelIndices.get(opId)
+
+  def rewriteExecutionFrom(levelIndex: Int): Schedule = {
+    val rewrittenSchedule = copy(
+      executionLevels = normalizedExecutionLevels.take(currentLevelIndex) ++ baseLevels.drop(levelIndex)
+    )
+    rewrittenSchedule.currentLevelIndex = currentLevelIndex
+    rewrittenSchedule
+  }
+
+  override def hasNext: Boolean = currentLevelIndex < normalizedExecutionLevels.length
+
+  override def next(): Set[Region] = {
+    val regions = normalizedExecutionLevels
       .lift(currentLevelIndex)
       .flatMap(levelSets.get)
       .getOrElse(Set.empty)
-
-  def advance: Schedule =
-    copy(
-      baseLevels = normalizedBaseLevels,
-      executionLevels = normalizedExecutionLevels,
-      currentLevelIndex = currentLevelIndex + 1
-    )
-
-  def getLevelIndexOfOperator(opId: OperatorIdentity): Option[Int] = operatorLevelIndices.get(opId)
-
-  def rewriteExecutionFrom(levelIndex: Int): Schedule =
-    copy(
-      baseLevels = normalizedBaseLevels,
-      executionLevels = normalizedExecutionLevels.take(currentLevelIndex) ++ normalizedBaseLevels.drop(
-        levelIndex
-      ),
-      currentLevelIndex = currentLevelIndex
-    )
-
-  override def iterator: Iterator[Set[Region]] =
-    normalizedExecutionLevels.iterator.map(levelSets)
+    currentLevelIndex += 1
+    regions
+  }
 }

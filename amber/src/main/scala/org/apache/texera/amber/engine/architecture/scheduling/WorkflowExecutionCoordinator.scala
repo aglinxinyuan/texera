@@ -59,9 +59,7 @@ class WorkflowExecutionCoordinator(
   }
 
   private[scheduling] def pullNextRegions: Set[Region] = {
-    val nextRegions = schedule.getCurrentRegions
-    schedule = schedule.advance
-    nextRegions
+    if (!schedule.hasNext) Set() else schedule.next()
   }
 
   /**

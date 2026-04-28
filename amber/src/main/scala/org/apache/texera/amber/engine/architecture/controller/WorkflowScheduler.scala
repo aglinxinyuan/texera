@@ -21,7 +21,11 @@ package org.apache.texera.amber.engine.architecture.controller
 
 import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
 import org.apache.texera.amber.core.workflow.{PhysicalPlan, WorkflowContext}
-import org.apache.texera.amber.engine.architecture.scheduling.{CostBasedScheduleGenerator, Schedule}
+import org.apache.texera.amber.engine.architecture.scheduling.{
+  CostBasedScheduleGenerator,
+  Region,
+  Schedule
+}
 
 class WorkflowScheduler(
     workflowContext: WorkflowContext,
@@ -47,4 +51,7 @@ class WorkflowScheduler(
     this.schedule = generatedSchedule
     this.physicalPlan = updatedPhysicalPlan
   }
+
+  def getNextRegions: Set[Region] = if (!schedule.hasNext) Set() else schedule.next()
+
 }
