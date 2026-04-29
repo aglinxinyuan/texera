@@ -190,9 +190,13 @@ class MainLoop(StoppableQueueBlockingRunnable):
                 )
 
     def process_input_state(self) -> None:
+        # Single switch handshake: DataProc parks at the run-loop's
+        # end-of-body switch (line 65) between tasks, so one switch from
+        # MainLoop drives a full pick-up -> executor -> output -> park-back
+        # cycle. By the time the switch returns, current_output_state holds
+        # the freshly produced output.
         self._switch_context()
         output_state = self.context.state_processing_manager.get_output_state()
-        self._switch_context()
         if output_state is not None:
             for to, batch in self.context.output_manager.emit_state(output_state):
                 self._output_queue.put(
