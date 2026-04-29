@@ -45,6 +45,7 @@ message ControlRequest {
     WorkerStateUpdatedRequest workerStateUpdatedRequest = 8;
     LinkWorkersRequest linkWorkersRequest = 9;
     WorkflowReconfigureRequest workflowReconfigureRequest = 10;
+    JumpToOperatorRequest jumpToOperatorRequest = 12;
 
     // request for worker
     AddInputChannelRequest addInputChannelRequest = 50;
