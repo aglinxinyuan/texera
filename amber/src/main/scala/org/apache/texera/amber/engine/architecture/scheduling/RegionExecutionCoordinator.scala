@@ -187,7 +187,7 @@ class RegionExecutionCoordinator(
                 // controller does not reuse old control-message sequence numbers for new workers.
                 asyncRPCClient.inputGateway.removeControlChannel(workerId)
                 asyncRPCClient.outputGateway.removeControlChannel(workerId)
-                gracefulStop(actorRef, Duration(5, TimeUnit.SECONDS)).asTwitter()
+                gracefulStop(actorRef, ScalaDuration(5, TimeUnit.SECONDS)).asTwitter()
               }
           }.toSeq
 
