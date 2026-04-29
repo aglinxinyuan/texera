@@ -92,6 +92,7 @@ import scala.concurrent.duration.{Duration => ScalaDuration}
   */
 class RegionExecutionCoordinator(
     region: Region,
+    isRestart: Boolean,
     workflowExecution: WorkflowExecution,
     asyncRPCClient: AsyncRPCClient,
     controllerConfig: ControllerConfig,
@@ -186,7 +187,7 @@ class RegionExecutionCoordinator(
                 // controller does not reuse old control-message sequence numbers for new workers.
                 asyncRPCClient.inputGateway.removeControlChannel(workerId)
                 asyncRPCClient.outputGateway.removeControlChannel(workerId)
-                gracefulStop(actorRef, ScalaDuration(5, TimeUnit.SECONDS)).asTwitter()
+                gracefulStop(actorRef, Duration(5, TimeUnit.SECONDS)).asTwitter()
               }
           }.toSeq
 
@@ -591,12 +592,14 @@ class RegionExecutionCoordinator(
           DocumentFactory.createDocument(storageUriToAdd, schema)
           DocumentFactory.createDocument(stateUriToAdd, State.schema)
         }
-
-        WorkflowExecutionsResource.insertOperatorPortResultUri(
-          eid = eid,
-          globalPortId = outputPortId,
-          uri = storageUriToAdd
-        )
+      
+        if (!isRestart) {
+          WorkflowExecutionsResource.insertOperatorPortResultUri(
+            eid = eid,
+            globalPortId = outputPortId,
+            uri = storageUriToAdd
+          )
+        }
     }
   }
 

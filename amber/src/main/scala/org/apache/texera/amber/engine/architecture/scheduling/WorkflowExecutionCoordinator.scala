@@ -100,9 +100,15 @@ class WorkflowExecutionCoordinator(
       .collect(
         nextRegions
           .map(region => {
-            workflowExecution.initRegionExecution(region)
+            val isRestart = workflowExecution.hasRegionExecution(region.id)
+            if (isRestart) {
+              workflowExecution.restartRegionExecution(region)
+            } else {
+              workflowExecution.initRegionExecution(region)
+            }
             regionExecutionCoordinators(region.id) = new RegionExecutionCoordinator(
               region,
+              isRestart,
               workflowExecution,
               asyncRPCClient,
               controllerConfig,

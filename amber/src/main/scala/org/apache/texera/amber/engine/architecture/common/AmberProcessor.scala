@@ -21,7 +21,6 @@ package org.apache.texera.amber.engine.architecture.common
 
 import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity}
 import org.apache.texera.amber.engine.architecture.messaginglayer.{
-  InputGateway,
   NetworkInputGateway,
   NetworkOutputGateway
 }
