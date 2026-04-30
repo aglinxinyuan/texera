@@ -28,9 +28,10 @@ case class Schedule(
   private val baseLevels = levelSets.keys.toVector.sorted
   private val normalizedExecutionLevels =
     if (executionLevels.nonEmpty || baseLevels.isEmpty) executionLevels else baseLevels
-  private val operatorLevelIndices = levelSets.iterator.flatMap { case (level, regions) =>
-    val levelIndex = baseLevels.indexOf(level)
-    regions.iterator.flatMap(region => region.getOperators.map(_.id.logicalOpId -> levelIndex))
+  private val operatorLevelIndices = levelSets.iterator.flatMap {
+    case (level, regions) =>
+      val levelIndex = baseLevels.indexOf(level)
+      regions.iterator.flatMap(region => region.getOperators.map(_.id.logicalOpId -> levelIndex))
   }.toMap
   private var currentLevelIndex = 0
 
@@ -40,7 +41,8 @@ case class Schedule(
 
   def rewriteExecutionFrom(levelIndex: Int): Schedule = {
     val rewrittenSchedule = copy(
-      executionLevels = normalizedExecutionLevels.take(currentLevelIndex) ++ baseLevels.drop(levelIndex)
+      executionLevels =
+        normalizedExecutionLevels.take(currentLevelIndex) ++ baseLevels.drop(levelIndex)
     )
     rewrittenSchedule.currentLevelIndex = currentLevelIndex
     rewrittenSchedule
