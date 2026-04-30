@@ -49,11 +49,7 @@ class DataProcessor(Runnable, Stoppable):
         with self._context.tuple_processing_manager.context_switch_condition:
             self._context.tuple_processing_manager.context_switch_condition.wait()
         self._running.set()
-        # Run debug-command / console-flush / exception checks before the
-        # first task, so a debug command queued during worker setup fires
-        # before any tuple/state/marker processing -- without consuming a
-        # round-trip on MainLoop's first switch_context.
-        self._post_switch_context_checks()
+        self._pre_loop_checks()
         while self._running.is_set():
             tpm = self._context.tuple_processing_manager
             spm = self._context.state_processing_manager
@@ -194,6 +190,14 @@ class DataProcessor(Runnable, Stoppable):
             self._context.debug_manager.debugger.set_trace()
 
     def _post_switch_context_checks(self):
+        self._check_and_process_debug_command()
+
+    def _pre_loop_checks(self) -> None:
+        # Runs once after init and before the first task so that a debug
+        # command queued during worker setup fires before any
+        # tuple / state / marker is processed. Only the debug-command
+        # check is needed here -- no task has run yet, so there is no
+        # exception to surface.
         self._check_and_process_debug_command()
 
     def _report_exception(self, exc_info: ExceptionInfo):
