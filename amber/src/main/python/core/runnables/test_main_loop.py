@@ -82,6 +82,44 @@ from pytexera.udf.examples.count_batch_operator import CountBatchOperator
 from pytexera.udf.examples.echo_operator import EchoOperator
 
 
+class _StateProcessingExecutor:
+    """In-process executor used by the state-pipeline tests below.
+
+    Tags every state produced by `process_state` with a `processed_marker`
+    so a test can verify the executor actually ran, and emits a separate
+    finish-marker state from `produce_state_on_finish` so EndChannel
+    handling can be observed.
+    """
+
+    @staticmethod
+    def process_tuple(tuple_, port):
+        yield tuple_
+
+    @staticmethod
+    def process_state(state: State, port: int) -> State:
+        new_state = State()
+        for key, value in state.__dict__.items():
+            if key != "schema":
+                new_state.add(key, value)
+        new_state.add("processed_marker", "executed")
+        new_state.add("port", port)
+        return new_state
+
+    @staticmethod
+    def produce_state_on_finish(port: int) -> State:
+        finish_state = State()
+        finish_state.add("finish_marker", "produce_state_on_finish_ran")
+        return finish_state
+
+    @staticmethod
+    def on_finish(port):
+        yield
+
+    @staticmethod
+    def close():
+        pass
+
+
 class TestMainLoop:
     @pytest.fixture
     def command_sequence(self):
@@ -175,6 +213,10 @@ class TestMainLoop:
                 )
             )
         return elements
+
+    @pytest.fixture
+    def state_processing_executor(self):
+        return _StateProcessingExecutor()
 
     @pytest.fixture
     def mock_binary_data_element(self, mock_binary_tuple, mock_data_input_channel):
@@ -1309,7 +1351,7 @@ class TestMainLoop:
         assert second_output.payload.frame["value"] == 42
         assert second_output.payload.frame["port"] == 0
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(2)
     def test_main_loop_thread_can_process_state(
         self,
         mock_data_output_channel,
@@ -1325,6 +1367,7 @@ class TestMainLoop:
         mock_initialize_executor,
         mock_state_data_elements,
         mock_end_of_upstream,
+        state_processing_executor,
         command_sequence,
         reraise,
     ):
@@ -1353,44 +1396,13 @@ class TestMainLoop:
                 ),
             )
 
-        # Replace the EchoOperator that mock_initialize_executor loaded
-        # with an in-process executor that tags processed states and emits
-        # a finish marker on EndChannel. Going through the
-        # InitializeExecutor RPC above sets up the rest of the worker
-        # state (output schema, partitioning bookkeeping); swapping the
-        # executor instance here lets the test observe whether
-        # process_state actually runs without depending on Python's
-        # cross-test module caching for the loaded operator class.
-        class StateProcessingExecutor:
-            @staticmethod
-            def process_tuple(tuple_, port):
-                yield tuple_
-
-            @staticmethod
-            def process_state(state: State, port: int) -> State:
-                new_state = State()
-                for key, value in state.__dict__.items():
-                    if key != "schema":
-                        new_state.add(key, value)
-                new_state.add("processed_marker", "executed")
-                new_state.add("port", port)
-                return new_state
-
-            @staticmethod
-            def produce_state_on_finish(port: int) -> State:
-                finish_state = State()
-                finish_state.add("finish_marker", "produce_state_on_finish_ran")
-                return finish_state
-
-            @staticmethod
-            def on_finish(port):
-                yield
-
-            @staticmethod
-            def close():
-                pass
-
-        main_loop.context.executor_manager.executor = StateProcessingExecutor()
+        # Going through the InitializeExecutor RPC above sets up the rest of
+        # the worker state (output schema, partitioning bookkeeping). Swap
+        # the executor instance with the test helper here so the test can
+        # assert the executor's process_state and produce_state_on_finish
+        # actually ran, without depending on Python's cross-test module
+        # caching for operator classes loaded via OpExecWithCode.
+        main_loop.context.executor_manager.executor = state_processing_executor
 
         # Send four states. With the lag-free state pipeline we expect each
         # state to produce its own output in order.
@@ -1444,7 +1456,7 @@ class TestMainLoop:
 
         reraise()
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(2)
     def test_main_loop_thread_can_process_state_after_tuple(
         self,
         mock_data_output_channel,
@@ -1460,17 +1472,13 @@ class TestMainLoop:
         mock_initialize_executor,
         mock_data_element,
         mock_state_data_elements,
+        state_processing_executor,
         command_sequence,
         reraise,
     ):
-        # Regression test for the mixed (tuple, then state) input sequence.
-        # The single-switch state handshake assumes DataProcessor is parked
-        # at the run-loop's end-of-body switch between tasks. If process_tuple
-        # parks DataProcessor at its own per-task `finally: _switch_context()`
-        # instead, MainLoop's first switch for the following state cycle
-        # wakes DataProcessor from that finally rather than from the run
-        # loop, current_output_state is still empty when MainLoop reads it,
-        # and the first state after a tuple is silently dropped.
+        # Coverage for the mixed (tuple, then state) input sequence: a
+        # tuple followed by several state DataElements should still emit
+        # every state's processed output in order.
         main_loop_thread.start()
 
         for setup_msg in [
@@ -1491,30 +1499,7 @@ class TestMainLoop:
                 ),
             )
 
-        class StateProcessingExecutor:
-            @staticmethod
-            def process_tuple(tuple_, port):
-                yield tuple_
-
-            @staticmethod
-            def process_state(state: State, port: int) -> State:
-                new_state = State()
-                for key, value in state.__dict__.items():
-                    if key != "schema":
-                        new_state.add(key, value)
-                new_state.add("processed_marker", "executed")
-                new_state.add("port", port)
-                return new_state
-
-            @staticmethod
-            def on_finish(port):
-                yield
-
-            @staticmethod
-            def close():
-                pass
-
-        main_loop.context.executor_manager.executor = StateProcessingExecutor()
+        main_loop.context.executor_manager.executor = state_processing_executor
 
         # Tuple first, then four states.
         input_queue.put(mock_data_element)

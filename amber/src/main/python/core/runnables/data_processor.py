@@ -49,17 +49,34 @@ class DataProcessor(Runnable, Stoppable):
         with self._context.tuple_processing_manager.context_switch_condition:
             self._context.tuple_processing_manager.context_switch_condition.wait()
         self._running.set()
+        # Run debug-command / console-flush / exception checks before the
+        # first task, so a debug command queued during worker setup fires
+        # before any tuple/state/marker processing -- without consuming a
+        # round-trip on MainLoop's first switch_context.
+        self._post_switch_context_checks()
         while self._running.is_set():
             tpm = self._context.tuple_processing_manager
             spm = self._context.state_processing_manager
-            if tpm.current_internal_marker is not None:
+            has_marker = tpm.current_internal_marker is not None
+            has_state = spm.current_input_state is not None
+            has_tuple = tpm.current_input_tuple is not None
+            queued = has_marker + has_state + has_tuple
+            # MainLoop is single-threaded and sets at most one of
+            # current_internal_marker / current_input_state /
+            # current_input_tuple per cycle before switching to here, so
+            # exactly one slot must be populated on every iteration.
+            if queued != 1:
+                raise RuntimeError(
+                    "DataProcessor expected exactly one queued input per "
+                    f"iteration, got marker={has_marker}, state={has_state}, "
+                    f"tuple={has_tuple}"
+                )
+            if has_marker:
                 self.process_internal_marker(tpm.get_internal_marker())
-            elif spm.current_input_state is not None:
+            elif has_state:
                 self.process_state(spm.get_input_state())
-            elif tpm.current_input_tuple is not None:
-                self.process_tuple()
             else:
-                raise RuntimeError("No marker or tuple to process.")
+                self.process_tuple()
 
     def process_internal_marker(self, internal_marker: InternalMarker) -> None:
         try:
