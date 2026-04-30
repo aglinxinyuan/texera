@@ -82,44 +82,6 @@ from pytexera.udf.examples.count_batch_operator import CountBatchOperator
 from pytexera.udf.examples.echo_operator import EchoOperator
 
 
-class _StateProcessingExecutor:
-    """In-process executor used by the state-pipeline tests below.
-
-    Tags every state produced by `process_state` with a `processed_marker`
-    so a test can verify the executor actually ran, and emits a separate
-    finish-marker state from `produce_state_on_finish` so EndChannel
-    handling can be observed.
-    """
-
-    @staticmethod
-    def process_tuple(tuple_, port):
-        yield tuple_
-
-    @staticmethod
-    def process_state(state: State, port: int) -> State:
-        new_state = State()
-        for key, value in state.__dict__.items():
-            if key != "schema":
-                new_state.add(key, value)
-        new_state.add("processed_marker", "executed")
-        new_state.add("port", port)
-        return new_state
-
-    @staticmethod
-    def produce_state_on_finish(port: int) -> State:
-        finish_state = State()
-        finish_state.add("finish_marker", "produce_state_on_finish_ran")
-        return finish_state
-
-    @staticmethod
-    def on_finish(port):
-        yield
-
-    @staticmethod
-    def close():
-        pass
-
-
 class TestMainLoop:
     @pytest.fixture
     def command_sequence(self):
@@ -216,7 +178,40 @@ class TestMainLoop:
 
     @pytest.fixture
     def state_processing_executor(self):
-        return _StateProcessingExecutor()
+        # In-process executor for the state-pipeline tests. Tags processed
+        # states with `processed_marker` and emits a finish-marker state
+        # from `produce_state_on_finish` so EndChannel handling can be
+        # observed.
+        class StateProcessingExecutor:
+            @staticmethod
+            def process_tuple(tuple_, port):
+                yield tuple_
+
+            @staticmethod
+            def process_state(state: State, port: int) -> State:
+                new_state = State()
+                for key, value in state.__dict__.items():
+                    if key != "schema":
+                        new_state.add(key, value)
+                new_state.add("processed_marker", "executed")
+                new_state.add("port", port)
+                return new_state
+
+            @staticmethod
+            def produce_state_on_finish(port: int) -> State:
+                finish_state = State()
+                finish_state.add("finish_marker", "produce_state_on_finish_ran")
+                return finish_state
+
+            @staticmethod
+            def on_finish(port):
+                yield
+
+            @staticmethod
+            def close():
+                pass
+
+        return StateProcessingExecutor()
 
     @pytest.fixture
     def mock_binary_data_element(self, mock_binary_tuple, mock_data_input_channel):
