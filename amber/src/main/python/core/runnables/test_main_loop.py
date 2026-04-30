@@ -1446,3 +1446,101 @@ class TestMainLoop:
         )
 
         reraise()
+
+    @pytest.mark.timeout(5)
+    def test_main_loop_thread_can_process_state_after_tuple(
+        self,
+        mock_data_output_channel,
+        mock_control_output_channel,
+        input_queue,
+        output_queue,
+        main_loop,
+        main_loop_thread,
+        mock_assign_input_port,
+        mock_assign_output_port,
+        mock_add_input_channel,
+        mock_add_partitioning,
+        mock_initialize_executor,
+        mock_data_element,
+        mock_state_data_elements,
+        command_sequence,
+        reraise,
+    ):
+        # Regression test for the mixed (tuple, then state) input sequence.
+        # The single-switch state handshake assumes DataProcessor is parked
+        # at the run-loop's end-of-body switch between tasks. If process_tuple
+        # parks DataProcessor at its own per-task `finally: _switch_context()`
+        # instead, MainLoop's first switch for the following state cycle
+        # wakes DataProcessor from that finally rather than from the run
+        # loop, current_output_state is still empty when MainLoop reads it,
+        # and the first state after a tuple is silently dropped.
+        main_loop_thread.start()
+
+        for setup_msg in [
+            mock_assign_input_port,
+            mock_assign_output_port,
+            mock_add_input_channel,
+            mock_add_partitioning,
+            mock_initialize_executor,
+        ]:
+            input_queue.put(setup_msg)
+            assert output_queue.get() == DCMElement(
+                tag=mock_control_output_channel,
+                payload=DirectControlMessagePayloadV2(
+                    return_invocation=ReturnInvocation(
+                        command_id=command_sequence,
+                        return_value=ControlReturn(empty_return=EmptyReturn()),
+                    )
+                ),
+            )
+
+        class StateProcessingExecutor:
+            @staticmethod
+            def process_tuple(tuple_, port):
+                yield tuple_
+
+            @staticmethod
+            def process_state(state: State, port: int) -> State:
+                new_state = State()
+                for key, value in state.__dict__.items():
+                    if key != "schema":
+                        new_state.add(key, value)
+                new_state.add("processed_marker", "executed")
+                new_state.add("port", port)
+                return new_state
+
+            @staticmethod
+            def on_finish(port):
+                yield
+
+            @staticmethod
+            def close():
+                pass
+
+        main_loop.context.executor_manager.executor = StateProcessingExecutor()
+
+        # Tuple first, then four states.
+        input_queue.put(mock_data_element)
+        warmup_output: DataElement = output_queue.get()
+        assert warmup_output.tag == mock_data_output_channel
+        assert isinstance(warmup_output.payload, DataFrame)
+
+        for state_element in mock_state_data_elements:
+            input_queue.put(state_element)
+
+        for expected_value in (1, 2, 3, 4):
+            output_data_element: DataElement = output_queue.get()
+            assert output_data_element.tag == mock_data_output_channel
+            assert isinstance(output_data_element.payload, StateFrame), (
+                f"expected StateFrame for value={expected_value}, got "
+                f"{type(output_data_element.payload).__name__}"
+            )
+            output_state = output_data_element.payload.frame
+            assert output_state["value"] == expected_value, (
+                f"state outputs after a tuple arrived out of order: "
+                f"expected value={expected_value}, "
+                f"got value={output_state['value']}"
+            )
+            assert output_state["processed_marker"] == "executed"
+
+        reraise()
