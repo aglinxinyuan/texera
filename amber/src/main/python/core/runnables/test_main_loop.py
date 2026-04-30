@@ -1440,10 +1440,7 @@ class TestMainLoop:
             f"EndChannel emission should be the finish-marker state from "
             f"produce_state_on_finish, got {end_channel_state!r}"
         )
-        assert (
-            end_channel_state["finish_marker"]
-            == "produce_state_on_finish_ran"
-        )
+        assert end_channel_state["finish_marker"] == "produce_state_on_finish_ran"
 
         reraise()
 
