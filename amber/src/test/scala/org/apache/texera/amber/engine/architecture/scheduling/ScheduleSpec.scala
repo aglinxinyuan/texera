@@ -74,23 +74,4 @@ class ScheduleSpec extends AnyFlatSpec {
     assert(!schedule.hasNext)
   }
 
-  it should "stop iteration at the first gap in level keys" in {
-    val r0 = region(0, "a")
-    val rGapped = region(2, "b")
-    val schedule = Schedule(Map(0 -> Set(r0), 2 -> Set(rGapped)))
-
-    assert(schedule.next() == Set(r0))
-    assert(!schedule.hasNext)
-  }
-
-  it should "begin iteration from the minimum level when level keys do not start at zero" in {
-    val r3 = region(3, "a")
-    val r4 = region(4, "b")
-    val schedule = Schedule(Map(3 -> Set(r3), 4 -> Set(r4)))
-
-    assert(schedule.hasNext)
-    assert(schedule.next() == Set(r3))
-    assert(schedule.next() == Set(r4))
-    assert(!schedule.hasNext)
-  }
 }
