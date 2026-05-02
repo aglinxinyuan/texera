@@ -74,4 +74,16 @@ class ScheduleSpec extends AnyFlatSpec {
     assert(!schedule.hasNext)
   }
 
+  it should "reject construction when level keys contain a gap" in {
+    assertThrows[IllegalArgumentException] {
+      Schedule(Map(0 -> Set(region(0, "a")), 2 -> Set(region(2, "b"))))
+    }
+  }
+
+  it should "reject construction when level keys do not start at zero" in {
+    assertThrows[IllegalArgumentException] {
+      Schedule(Map(3 -> Set(region(3, "a")), 4 -> Set(region(4, "b"))))
+    }
+  }
+
 }
