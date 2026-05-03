@@ -141,7 +141,7 @@ class PartitionersSpec extends AnyFlatSpec {
     }
   }
 
-  it should "be deterministic for the same hash-key value" in {
+  it should "be deterministic for the same input tuple" in {
     val partitioning = HashBasedShufflePartitioning(
       batchSize = 100,
       channels = Seq(channel(r1), channel(r2), channel(r3)),
@@ -149,8 +149,11 @@ class PartitionersSpec extends AnyFlatSpec {
     )
     val partitioner = HashBasedShufflePartitioner(partitioning)
 
-    val first = partitioner.getBucketIndex(stringTuple("alpha", "ignored-1")).next()
-    val second = partitioner.getBucketIndex(stringTuple("alpha", "ignored-2")).next()
+    // Same tuple instance, two consecutive calls — the contract says the
+    // second call must produce the same bucket as the first.
+    val tuple = stringTuple("alpha", "ignored")
+    val first = partitioner.getBucketIndex(tuple).next()
+    val second = partitioner.getBucketIndex(tuple).next()
     assert(first == second)
   }
 
@@ -162,9 +165,21 @@ class PartitionersSpec extends AnyFlatSpec {
     )
     val partitioner = HashBasedShufflePartitioner(partitioning)
 
-    val a = partitioner.getBucketIndex(stringTuple("same-key", "value-A")).next()
-    val b = partitioner.getBucketIndex(stringTuple("same-key", "value-B")).next()
-    assert(a == b)
+    // Sweep several (k, v) pairs so a buggy implementation that hashes the
+    // full tuple would have to collide modulo 3 on every single key — which
+    // is not realistic for any reasonable hash. For each k, vary the second
+    // field across multiple values; the bucket must be the same for all of
+    // them.
+    val keys = Seq("alpha", "beta", "gamma", "delta", "epsilon", "zeta")
+    val varyingSecondField = (0 until 8).map(i => s"v-$i")
+    keys.foreach { k =>
+      val buckets =
+        varyingSecondField.map(v => partitioner.getBucketIndex(stringTuple(k, v)).next())
+      assert(
+        buckets.distinct.size == 1,
+        s"key=$k produced different buckets when varying the non-hash field: $buckets"
+      )
+    }
   }
 
   it should "use the full tuple when no hash attributes are configured" in {
@@ -174,8 +189,20 @@ class PartitionersSpec extends AnyFlatSpec {
       hashAttributeNames = Seq.empty
     )
     val partitioner = HashBasedShufflePartitioner(partitioning)
-    val idx = partitioner.getBucketIndex(stringTuple("k", "v")).next()
-    assert(idx >= 0 && idx < 3)
+
+    // Hold k constant; vary the second field across many values. If the
+    // partitioner hashed only the (empty) hash-attr subset, every bucket
+    // would collapse to a single value. With the full tuple feeding the
+    // hash, varying v across enough samples must produce more than one
+    // distinct bucket among 3 receivers.
+    val sampleSize = 50
+    val buckets =
+      (0 until sampleSize).map(i => partitioner.getBucketIndex(stringTuple("k", s"v-$i")).next())
+    buckets.foreach(idx => assert(idx >= 0 && idx < 3))
+    assert(
+      buckets.distinct.size > 1,
+      s"empty hashAttributeNames should hash the full tuple, but $sampleSize samples all landed in: ${buckets.distinct}"
+    )
   }
 
   "HashBasedShufflePartitioner.allReceivers" should "deduplicate channel destinations" in {
