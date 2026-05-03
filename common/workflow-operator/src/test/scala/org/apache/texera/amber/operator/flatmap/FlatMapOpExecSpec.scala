@@ -62,4 +62,13 @@ class FlatMapOpExecSpec extends AnyFlatSpec {
     val out = exec.processTuple(tuple(5), 0).toList
     assert(out == List(tuple(5)))
   }
+
+  it should "throw NullPointerException when processTuple is invoked before setFlatMapFunc" in {
+    val exec = new FlatMapOpExec()
+    assertThrows[NullPointerException] {
+      // Iterator construction calls flatMapFunc(tuple) eagerly, so the NPE
+      // surfaces here even though processTuple itself returns an iterator.
+      exec.processTuple(tuple(1), 0)
+    }
+  }
 }
