@@ -65,7 +65,10 @@ class CongestionControlSpec extends AnyFlatSpec {
     cc.ack(1L) // immediate ack — well within ackTimeLimit (3s)
     // After the first slow-start ack, windowSize should be at least 2.
     cc.markMessageInTransit(msg(2L))
-    assert(cc.canSend, "window must permit at least one more in-transit message after slow-start ack")
+    assert(
+      cc.canSend,
+      "window must permit at least one more in-transit message after slow-start ack"
+    )
   }
 
   "CongestionControl.getBufferedMessagesToSend" should "be bounded by remaining window capacity" in {
