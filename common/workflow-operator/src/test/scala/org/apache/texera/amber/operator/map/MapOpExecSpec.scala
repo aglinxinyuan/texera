@@ -42,6 +42,49 @@ class MapOpExecSpec extends AnyFlatSpec {
     assert(out == List(tuple(6)))
   }
 
+  it should "apply a doubling map function to a stream of tuples" in {
+    val exec = new TestMap()
+    exec.setMapFunc((t: Tuple) => tuple(t.getField[Int]("v") * 2))
+    val out = (1 to 5).flatMap(v => exec.processTuple(tuple(v), 0).toList)
+    assert(out.map(_.asInstanceOf[Tuple]) == (1 to 5).map(v => tuple(v * 2)))
+  }
+
+  it should "apply a constant map function regardless of input" in {
+    val exec = new TestMap()
+    exec.setMapFunc((_: Tuple) => tuple(99))
+    val out = Seq(1, 2, 3).map(v => exec.processTuple(tuple(v), 0).toList.head.asInstanceOf[Tuple])
+    assert(out.forall(_ == tuple(99)))
+  }
+
+  it should "apply a stateful map function (closes over an external counter)" in {
+    val exec = new TestMap()
+    var counter = 0
+    exec.setMapFunc { (t: Tuple) =>
+      counter += 1
+      tuple(t.getField[Int]("v") + counter)
+    }
+    val out = (1 to 3).map(v => exec.processTuple(tuple(v), 0).toList.head.asInstanceOf[Tuple])
+    // counter goes 1, 2, 3 → outputs 1+1, 2+2, 3+3
+    assert(out == List(tuple(2), tuple(4), tuple(6)))
+    assert(counter == 3)
+  }
+
+  it should "support a map function that produces a tuple with a different schema" in {
+    val outSchema =
+      Schema().add(new Attribute("name", AttributeType.STRING))
+    val exec = new TestMap()
+    exec.setMapFunc { (t: Tuple) =>
+      Tuple
+        .builder(outSchema)
+        .add(outSchema.getAttribute("name"), s"v=${t.getField[Int]("v")}")
+        .build()
+    }
+    val out = exec.processTuple(tuple(7), 0).toList
+    assert(out.size == 1)
+    val mapped = out.head.asInstanceOf[Tuple]
+    assert(mapped.getField[String]("name") == "v=7")
+  }
+
   it should "return the same instance when mapFunc returns the input tuple" in {
     val exec = new TestMap()
     exec.setMapFunc((t: Tuple) => t)
