@@ -73,10 +73,20 @@ class StateManagerSpec extends AnyFlatSpec {
     assert(ex.getMessage.contains(S2.toString))
   }
 
-  it should "throw InvalidTransitionException for a state absent from the transition graph keys" in {
-    val sm = linear(S2) // S2 has no outgoing transitions
+  it should "throw InvalidTransitionException when transitioning out of a terminal state with no listed successors" in {
+    val sm = linear(S2) // S2 is a key, but with `Set.empty`, so no transitions are allowed.
     intercept[InvalidTransitionException] {
-      sm.transitTo(Orphan)
+      sm.transitTo(S0)
+    }
+  }
+
+  it should "throw InvalidTransitionException when the current state is not a key in the transition graph" in {
+    // Orphan is intentionally absent from `linear()`'s key set, so
+    // `stateTransitionGraph.getOrElse(currentState, Set())` falls back to
+    // empty and any target should be rejected.
+    val sm = linear(Orphan)
+    intercept[InvalidTransitionException] {
+      sm.transitTo(S0)
     }
   }
 
