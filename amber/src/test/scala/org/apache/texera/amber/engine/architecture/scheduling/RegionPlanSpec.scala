@@ -78,6 +78,14 @@ class RegionPlanSpec extends AnyFlatSpec {
     assert(plan.getRegionOfLink(ab) == r0)
   }
 
+  it should "throw NoSuchElementException when no region claims the link" in {
+    val r0 = Region(RegionIdentity(0), Set(op("a")), Set.empty)
+    val plan = RegionPlan(Set(r0), Set.empty)
+    assertThrows[NoSuchElementException] {
+      plan.getRegionOfLink(link("a", "missing"))
+    }
+  }
+
   "RegionPlan.getRegionOfPortId" should "find the region whose ports contain the global port id" in {
     val portA = globalPort("a")
     val r0 = Region(RegionIdentity(0), Set(op("a")), Set.empty, ports = Set(portA))
