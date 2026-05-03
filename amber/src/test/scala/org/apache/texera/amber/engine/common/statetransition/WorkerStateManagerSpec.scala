@@ -29,48 +29,70 @@ class WorkerStateManagerSpec extends AnyFlatSpec {
 
   private val actorId: ActorVirtualIdentity = ActorVirtualIdentity("test-worker")
 
-  private def newManager(initial: WorkerState = UNINITIALIZED): WorkerStateManager =
+  // No default here on purpose: the "default to UNINITIALIZED" test below must
+  // exercise WorkerStateManager's own default-parameter contract, not the
+  // helper's.
+  private def newManager(initial: WorkerState): WorkerStateManager =
     new WorkerStateManager(actorId, initial)
 
   "WorkerStateManager" should "default to the UNINITIALIZED state" in {
-    assert(newManager().getCurrentState == UNINITIALIZED)
+    // Construct without an explicit initial so the test would catch a change
+    // to WorkerStateManager's default-parameter value.
+    assert(new WorkerStateManager(actorId).getCurrentState == UNINITIALIZED)
   }
 
   it should "honor the explicit initial state when provided" in {
     assert(newManager(READY).getCurrentState == READY)
   }
 
-  // -- Allowed transitions per the documented graph --
+  // -- Allowed transitions per the documented graph (one test per edge) --
 
   it should "allow UNINITIALIZED -> READY" in {
-    val sm = newManager()
+    val sm = newManager(UNINITIALIZED)
     sm.transitTo(READY)
     assert(sm.getCurrentState == READY)
   }
 
-  it should "allow READY -> RUNNING, RUNNING -> PAUSED, PAUSED -> RUNNING, RUNNING -> COMPLETED" in {
+  it should "allow READY -> RUNNING" in {
     val sm = newManager(READY)
     sm.transitTo(RUNNING)
+    assert(sm.getCurrentState == RUNNING)
+  }
+
+  it should "allow RUNNING -> PAUSED" in {
+    val sm = newManager(RUNNING)
     sm.transitTo(PAUSED)
+    assert(sm.getCurrentState == PAUSED)
+  }
+
+  it should "allow PAUSED -> RUNNING" in {
+    val sm = newManager(PAUSED)
     sm.transitTo(RUNNING)
+    assert(sm.getCurrentState == RUNNING)
+  }
+
+  it should "allow RUNNING -> COMPLETED" in {
+    val sm = newManager(RUNNING)
     sm.transitTo(COMPLETED)
     assert(sm.getCurrentState == COMPLETED)
   }
 
-  it should "allow READY -> PAUSED and READY -> COMPLETED directly" in {
-    val sm1 = newManager(READY)
-    sm1.transitTo(PAUSED)
-    assert(sm1.getCurrentState == PAUSED)
+  it should "allow READY -> PAUSED" in {
+    val sm = newManager(READY)
+    sm.transitTo(PAUSED)
+    assert(sm.getCurrentState == PAUSED)
+  }
 
-    val sm2 = newManager(READY)
-    sm2.transitTo(COMPLETED)
-    assert(sm2.getCurrentState == COMPLETED)
+  it should "allow READY -> COMPLETED" in {
+    val sm = newManager(READY)
+    sm.transitTo(COMPLETED)
+    assert(sm.getCurrentState == COMPLETED)
   }
 
   // -- Disallowed transitions --
 
   it should "reject UNINITIALIZED -> RUNNING (must go through READY)" in {
-    val sm = newManager()
+    val sm = newManager(UNINITIALIZED)
     intercept[InvalidTransitionException] {
       sm.transitTo(RUNNING)
     }
@@ -89,8 +111,10 @@ class WorkerStateManagerSpec extends AnyFlatSpec {
     assert(sm.getCurrentState == COMPLETED)
   }
 
-  it should "reject transitions into TERMINATED (TERMINATED is absent from the graph)" in {
-    Seq(UNINITIALIZED, READY, RUNNING, PAUSED).foreach { from =>
+  it should "reject transitions into TERMINATED from every reachable source state" in {
+    // TERMINATED is absent from the graph entirely, so it must be unreachable
+    // from any state in the graph — including the COMPLETED terminal state.
+    Seq(UNINITIALIZED, READY, RUNNING, PAUSED, COMPLETED).foreach { from =>
       val sm = newManager(from)
       intercept[InvalidTransitionException] {
         sm.transitTo(TERMINATED)
