@@ -97,6 +97,28 @@ class CongestionControlSpec extends AnyFlatSpec {
     assert(all == Set(1L, 2L))
   }
 
+  "CongestionControl.getTimedOutInTransitMessages" should "be empty when no message has been marked in transit" in {
+    val cc = new CongestionControl()
+    assert(cc.getTimedOutInTransitMessages.isEmpty)
+  }
+
+  it should "exclude messages that are still inside the resend time limit" in {
+    val cc = new CongestionControl()
+    cc.markMessageInTransit(msg(1L))
+    // The message was just enqueued, so it is well inside the 60s resend
+    // window and must not be reported as timed out.
+    assert(cc.getTimedOutInTransitMessages.isEmpty)
+  }
+
+  "CongestionControl.enqueueMessage" should "not place the message into the in-transit set on its own" in {
+    val cc = new CongestionControl()
+    cc.enqueueMessage(msg(1L))
+    assert(cc.getInTransitMessages.isEmpty)
+    // The message should still surface via getAllMessages (which unions
+    // inTransit and toBeSent), proving it was buffered, not dropped.
+    assert(cc.getAllMessages.exists(_.messageId == 1L))
+  }
+
   "CongestionControl.getStatusReport" should "include window size, in-transit count, and waiting count" in {
     val cc = new CongestionControl()
     cc.markMessageInTransit(msg(1L))
