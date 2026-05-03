@@ -22,6 +22,8 @@ package org.apache.texera.amber.operator.aggregate
 import org.apache.texera.amber.core.tuple.AttributeType
 import org.scalatest.flatspec.AnyFlatSpec
 
+// SUM / COUNT / CONCAT are already covered by AggregateOpSpec; this spec adds
+// the gaps it leaves uncovered: AVERAGE, MIN, MAX, and the null-function path.
 class AggregationOperationSpec extends AnyFlatSpec {
 
   private def operation(fn: AggregationFunction): AggregationOperation = {
@@ -32,19 +34,9 @@ class AggregationOperationSpec extends AnyFlatSpec {
     op
   }
 
-  "AggregationOperation.getAggregationAttribute" should "preserve the input type for SUM" in {
-    val attr = operation(AggregationFunction.SUM).getAggregationAttribute(AttributeType.LONG)
-    assert(attr.getName == "out")
-    assert(attr.getType == AttributeType.LONG)
-  }
-
-  it should "always produce INTEGER for COUNT regardless of input type" in {
-    val attr = operation(AggregationFunction.COUNT).getAggregationAttribute(AttributeType.STRING)
-    assert(attr.getType == AttributeType.INTEGER)
-  }
-
-  it should "always produce DOUBLE for AVERAGE" in {
+  "AggregationOperation.getAggregationAttribute" should "always produce DOUBLE for AVERAGE" in {
     val attr = operation(AggregationFunction.AVERAGE).getAggregationAttribute(AttributeType.LONG)
+    assert(attr.getName == "out")
     assert(attr.getType == AttributeType.DOUBLE)
   }
 
@@ -57,11 +49,6 @@ class AggregationOperationSpec extends AnyFlatSpec {
   it should "preserve the input type for MAX" in {
     val attr = operation(AggregationFunction.MAX).getAggregationAttribute(AttributeType.DOUBLE)
     assert(attr.getType == AttributeType.DOUBLE)
-  }
-
-  it should "always produce STRING for CONCAT" in {
-    val attr = operation(AggregationFunction.CONCAT).getAggregationAttribute(AttributeType.STRING)
-    assert(attr.getType == AttributeType.STRING)
   }
 
   it should "throw RuntimeException when aggFunction is null" in {
