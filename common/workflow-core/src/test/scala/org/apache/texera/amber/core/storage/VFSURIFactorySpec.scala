@@ -79,6 +79,14 @@ class VFSURIFactorySpec extends AnyFlatSpec {
     val path = uri.getPath
     assert(path.contains(s"/opid/${operatorId.id}"))
     assert(path.endsWith("/consolemessages"))
+
+    // The current `decodeURI` does not extract the operator id (it has no
+    // "opid" branch), so we only round-trip wid/eid/resourceType here.
+    val (wid, eid, globalPortIdOpt, resourceType) = VFSURIFactory.decodeURI(uri)
+    assert(wid == workflowId)
+    assert(eid == executionId)
+    assert(globalPortIdOpt.isEmpty)
+    assert(resourceType == VFSResourceType.CONSOLE_MESSAGES)
   }
 
   "VFSURIFactory.decodeURI" should "reject URIs with a non-vfs scheme" in {
