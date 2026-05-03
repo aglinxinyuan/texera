@@ -73,6 +73,14 @@ class WorkerExecutionSpec extends AnyFlatSpec {
     assert(we.getStats.idleTime == 42L)
   }
 
+  it should "ignore stats updates with a non-newer timestamp" in {
+    val we = WorkerExecution()
+    we.update(timeStamp = 20L, stats = stats(idle = 42L))
+    we.update(timeStamp = 20L, stats = stats(idle = 99L)) // not strictly newer
+    we.update(timeStamp = 5L, stats = stats(idle = 0L)) // older
+    assert(we.getStats.idleTime == 42L)
+  }
+
   "WorkerExecution.getInputPortExecution" should "lazily create and reuse a port execution per port id" in {
     val we = WorkerExecution()
     val first = we.getInputPortExecution(PortIdentity(0))
