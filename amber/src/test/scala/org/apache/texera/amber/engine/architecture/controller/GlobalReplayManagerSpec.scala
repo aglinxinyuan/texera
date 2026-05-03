@@ -83,4 +83,22 @@ class GlobalReplayManagerSpec extends AnyFlatSpec {
     assert(cb.startCount == 1)
     assert(cb.completeCount == 1)
   }
+
+  it should "fire onRecoveryStart again when recovery restarts after completing" in {
+    val cb = new CallbackCounter
+    val mgr = new GlobalReplayManager(cb.onStart, cb.onComplete)
+
+    // First cycle: start and finish.
+    mgr.markRecoveryStatus(workerA, isRecovering = true)
+    mgr.markRecoveryStatus(workerA, isRecovering = false)
+    assert(cb.startCount == 1)
+    assert(cb.completeCount == 1)
+
+    // Second cycle: a new transition into recovery must fire onStart again,
+    // and the subsequent clear must fire onComplete again.
+    mgr.markRecoveryStatus(workerB, isRecovering = true)
+    mgr.markRecoveryStatus(workerB, isRecovering = false)
+    assert(cb.startCount == 2)
+    assert(cb.completeCount == 2)
+  }
 }
