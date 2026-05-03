@@ -86,6 +86,36 @@ class FlowControlSpec extends AnyFlatSpec {
     assert(!fc.isOverloaded)
   }
 
+  it should "force new messages through the stash whenever the stash is non-empty" in {
+    // While the stash is non-empty, even a new message must be stashed first
+    // and then drained in FIFO order — never sent ahead of older stashed work.
+    val fc = new FlowControl()
+    fc.updateQueuedCredit(maxBytes)
+    fc.getMessagesToSend(msg(1L)) // stash msg(1L)
+    assert(fc.isOverloaded)
+
+    // Restore enough credit for 2 messages, then push a new one. The branch
+    // under test always stashes the new message and then drains FIFO.
+    fc.updateQueuedCredit(maxBytes - 2 * msgSize)
+    val drained = fc.getMessagesToSend(msg(2L)).toList
+    assert(drained == List(msg(1L), msg(2L)))
+    assert(!fc.isOverloaded)
+  }
+
+  it should "leave isOverloaded true when only some stashed messages can be drained" in {
+    val fc = new FlowControl()
+    fc.updateQueuedCredit(maxBytes)
+    fc.getMessagesToSend(msg(1L))
+    fc.getMessagesToSend(msg(2L))
+    assert(fc.isOverloaded)
+
+    // Restore credit for exactly one message; the second remains stashed.
+    fc.updateQueuedCredit(maxBytes - msgSize)
+    val drained = fc.getMessagesToSend.toList
+    assert(drained == List(msg(1L)))
+    assert(fc.isOverloaded, "stash still has msg(2L), so overloaded must remain true")
+  }
+
   "FlowControl.updateQueuedCredit" should "shrink the available credit" in {
     val fc = new FlowControl()
     fc.updateQueuedCredit(100L)
