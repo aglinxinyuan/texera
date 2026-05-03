@@ -20,11 +20,24 @@
 package org.apache.texera.amber.engine.common.ambermessage
 
 import org.apache.pekko.actor.{Address, ActorSystem}
+import org.apache.pekko.testkit.TestKit
 import org.apache.texera.amber.core.tuple.{Attribute, AttributeType, Schema, Tuple}
 import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity}
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 
-class AmberMessageEnvelopesSpec extends AnyFlatSpec {
+class AmberMessageEnvelopesSpec extends AnyFlatSpec with BeforeAndAfterAll {
+
+  // Suite-local actor system used only by the ResendOutputTo test below;
+  // shut down via TestKit.shutdownActorSystem in afterAll so threads do not
+  // outlive the test, matching the cleanup pattern in ControllerSpec /
+  // WorkerSpec.
+  private val pekkoSystem: ActorSystem = ActorSystem("amber-message-envelopes-test")
+
+  override protected def afterAll(): Unit = {
+    TestKit.shutdownActorSystem(pekkoSystem)
+    super.afterAll()
+  }
 
   private val channel =
     ChannelIdentity(ActorVirtualIdentity("from"), ActorVirtualIdentity("to"), isControl = false)
@@ -78,16 +91,11 @@ class AmberMessageEnvelopesSpec extends AnyFlatSpec {
   }
 
   it should "exercise ResendOutputTo via a real ActorRef so the case class wires correctly" in {
-    val system = ActorSystem("amber-message-envelopes-test")
-    try {
-      val deadRef = system.deadLetters
-      val vid = ActorVirtualIdentity("downstream")
-      val payload = ResendOutputTo(vid, deadRef)
-      assert(payload.vid == vid)
-      assert(payload.ref == deadRef)
-    } finally {
-      system.terminate()
-    }
+    val deadRef = pekkoSystem.deadLetters
+    val vid = ActorVirtualIdentity("downstream")
+    val payload = ResendOutputTo(vid, deadRef)
+    assert(payload.vid == vid)
+    assert(payload.ref == deadRef)
   }
 
   it should "be Serializable on every subtype" in {
