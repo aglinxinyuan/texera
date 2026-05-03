@@ -117,11 +117,16 @@ class SchedulingConfigsSpec extends AnyFlatSpec {
   }
 
   it should "produce empty list for unhandled partition cases" in {
-    // The catch-all `case _ => List()` is exercised by an InternalLink-style
-    // partition that the matcher does not enumerate. Constructing one via the
-    // sealed hierarchy isn't possible without adding a new subtype, so this
-    // case is covered indirectly by the matcher's exhaustiveness audit.
-    succeed
+    // PartitionInfo is sealed, so `null` is the only value that falls through
+    // the named cases without adding a new subtype. This pins the catch-all
+    // `case _ => List()` branch.
+    val configs = ChannelConfig.generateChannelConfigs(
+      List(actor("f")),
+      List(actor("t")),
+      PortIdentity(0),
+      null.asInstanceOf[PartitionInfo]
+    )
+    assert(configs.isEmpty)
   }
 
   // ---------------------------------------------------------------------------
@@ -149,6 +154,7 @@ class SchedulingConfigsSpec extends AnyFlatSpec {
       dataTransferBatchSize = 10
     )
     val ranged = partitioning.asInstanceOf[RangeBasedShufflePartitioning]
+    assert(ranged.batchSize == 10)
     assert(ranged.rangeMin == 0L)
     assert(ranged.rangeMax == 99L)
     assert(ranged.rangeAttributeNames == List("a"))
@@ -197,6 +203,20 @@ class SchedulingConfigsSpec extends AnyFlatSpec {
       LinkConfig.toPartitioning(from, to, UnknownPartition(), dataTransferBatchSize = 1)
     val rr = partitioning.asInstanceOf[RoundRobinPartitioning]
     assert(rr.channels.size == 4)
+  }
+
+  it should "throw UnsupportedOperationException for unhandled partition cases" in {
+    // PartitionInfo is sealed; `null` is the only value that falls through
+    // the named cases without adding a new subtype. This pins the catch-all
+    // `case _ => throw new UnsupportedOperationException()` branch.
+    assertThrows[UnsupportedOperationException] {
+      LinkConfig.toPartitioning(
+        List(actor("f")),
+        List(actor("t")),
+        null.asInstanceOf[PartitionInfo],
+        dataTransferBatchSize = 1
+      )
+    }
   }
 
   // ---------------------------------------------------------------------------
