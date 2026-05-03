@@ -43,16 +43,19 @@ class ResultSchemaSpec extends AnyFlatSpec {
     assert(actualNames == expectedNames)
   }
 
-  it should "type the timestamp column as TIMESTAMP and the count columns as LONG" in {
+  it should "pin every runtime-statistics column to its expected type" in {
     val schema = ResultSchema.runtimeStatisticsSchema
+    // Downstream readers deserialize positionally and cast each slot, so each
+    // column type matters. Pin all of them, not just a sample.
+    assert(schema.getAttribute("operatorId").getType == AttributeType.STRING)
     assert(schema.getAttribute("time").getType == AttributeType.TIMESTAMP)
     assert(schema.getAttribute("inputTupleCnt").getType == AttributeType.LONG)
+    assert(schema.getAttribute("inputTupleSize").getType == AttributeType.LONG)
     assert(schema.getAttribute("outputTupleCnt").getType == AttributeType.LONG)
+    assert(schema.getAttribute("outputTupleSize").getType == AttributeType.LONG)
+    assert(schema.getAttribute("dataProcessingTime").getType == AttributeType.LONG)
+    assert(schema.getAttribute("controlProcessingTime").getType == AttributeType.LONG)
     assert(schema.getAttribute("idleTime").getType == AttributeType.LONG)
-  }
-
-  it should "type the worker-count and status columns as INTEGER" in {
-    val schema = ResultSchema.runtimeStatisticsSchema
     assert(schema.getAttribute("numWorkers").getType == AttributeType.INTEGER)
     assert(schema.getAttribute("status").getType == AttributeType.INTEGER)
   }
