@@ -24,7 +24,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class ResultSchemaSpec extends AnyFlatSpec {
 
-  "ResultSchema.runtimeStatisticsSchema" should "expose the canonical runtime-statistics columns in order" in {
+  "ResultSchema.runtimeStatisticsSchema" should "list its columns in the declared order" in {
     val expectedNames = List(
       "operatorId",
       "time",
@@ -60,7 +60,7 @@ class ResultSchemaSpec extends AnyFlatSpec {
     assert(schema.getAttribute("status").getType == AttributeType.INTEGER)
   }
 
-  "ResultSchema.consoleMessagesSchema" should "expose a single STRING `message` column" in {
+  "ResultSchema.consoleMessagesSchema" should "have a single STRING `message` column" in {
     val schema = ResultSchema.consoleMessagesSchema
     val attrs = schema.getAttributes
     assert(attrs.size == 1)
