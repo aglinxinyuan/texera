@@ -81,4 +81,23 @@ class IfOpExecSpec extends AnyFlatSpec {
       exec.processTuple(tuple(1), 0)
     }
   }
+
+  "IfOpExec.processState" should "throw when the configured conditionName is missing from the state" in {
+    val exec = new IfOpExec(desc("flag"))
+    // `state.values(desc.conditionName)` does an unsafe Map.apply, so a
+    // missing key surfaces as NoSuchElementException rather than a quiet
+    // misroute.
+    assertThrows[NoSuchElementException] {
+      exec.processState(State(Map[String, Any]("other" -> true)), 0)
+    }
+  }
+
+  it should "throw when the conditionName value is not a Boolean" in {
+    val exec = new IfOpExec(desc("flag"))
+    // Current contract is `asInstanceOf[Boolean]`, so a non-Boolean value
+    // must surface as a ClassCastException rather than a silent route.
+    assertThrows[ClassCastException] {
+      exec.processState(State(Map[String, Any]("flag" -> "yes")), 0)
+    }
+  }
 }
