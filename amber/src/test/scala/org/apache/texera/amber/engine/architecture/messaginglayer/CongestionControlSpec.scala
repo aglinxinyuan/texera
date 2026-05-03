@@ -44,6 +44,21 @@ class CongestionControlSpec extends AnyFlatSpec {
     assert(!cc.canSend)
   }
 
+  it should "not block markMessageInTransit when in-transit count already exceeds window" in {
+    // CongestionControl tracks message *count*, not byte size — payload size
+    // does not factor into the window check (that's FlowControl's job, not
+    // this class's). markMessageInTransit is a passive setter: it does not
+    // check `canSend`. Callers are expected to consult `canSend` first; if
+    // they don't, the in-transit map grows past windowSize but `canSend`
+    // stays false.
+    val cc = new CongestionControl()
+    cc.markMessageInTransit(msg(1L))
+    cc.markMessageInTransit(msg(2L)) // ignores window; should still record
+    cc.markMessageInTransit(msg(3L))
+    assert(cc.getInTransitMessages.size == 3)
+    assert(!cc.canSend)
+  }
+
   it should "stay true while in-transit count is below the grown window" in {
     val cc = new CongestionControl()
     // After three slow-start acks, the window should be at least 4. Verify
@@ -74,10 +89,9 @@ class CongestionControlSpec extends AnyFlatSpec {
     val cc = new CongestionControl()
     cc.markMessageInTransit(msg(1L))
     cc.ack(99L)
-    // Observable contract: existing in-transit message is preserved, no
-    // state changes. (CongestionControl.ack also logs the unknown id at
-    // debug level via AmberLogging — verifying the log line itself is out
-    // of scope here; we lock down the state-level no-op.)
+    // CongestionControl.ack returns silently for ids not in `inTransit`
+    // (no logging, no exception, no window change). Pin the state-level
+    // no-op: the previously in-transit message survives, window stays full.
     assert(cc.getInTransitMessages.exists(_.messageId == 1L))
     assert(cc.getInTransitMessages.size == 1)
     assert(!cc.canSend)
