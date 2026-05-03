@@ -92,12 +92,41 @@ class IfOpExecSpec extends AnyFlatSpec {
     }
   }
 
-  it should "throw when the conditionName value is not a Boolean" in {
+  it should "throw ClassCastException when the conditionName value is a String" in {
     val exec = new IfOpExec(desc("flag"))
     // Current contract is `asInstanceOf[Boolean]`, so a non-Boolean value
     // must surface as a ClassCastException rather than a silent route.
     assertThrows[ClassCastException] {
       exec.processState(State(Map[String, Any]("flag" -> "yes")), 0)
     }
+  }
+
+  it should "throw ClassCastException when the conditionName value is an Int" in {
+    val exec = new IfOpExec(desc("flag"))
+    // Scala's `asInstanceOf[Boolean]` does not coerce numerics to booleans
+    // the way Python's `bool(1)` does — it must throw.
+    assertThrows[ClassCastException] {
+      exec.processState(State(Map[String, Any]("flag" -> 1)), 0)
+    }
+  }
+
+  it should "throw ClassCastException when the conditionName value is zero (Int)" in {
+    val exec = new IfOpExec(desc("flag"))
+    // Likewise, integer 0 is not coerced to false.
+    assertThrows[ClassCastException] {
+      exec.processState(State(Map[String, Any]("flag" -> 0)), 0)
+    }
+  }
+
+  it should "treat a null condition value as false (default Boolean unbox)" in {
+    val exec = new IfOpExec(desc("flag"))
+    // `null.asInstanceOf[Boolean]` quietly unboxes to `false` in Scala, so
+    // a null condition routes to the FALSE port rather than throwing. This
+    // is a quiet behavior worth pinning so a future change to throw doesn't
+    // silently regress.
+    val result = exec.processState(State(Map[String, Any]("flag" -> null)), 0)
+    assert(result.isDefined)
+    val out = exec.processTupleMultiPort(tuple(1), 0).toList
+    assert(out == List((tuple(1), Some(falsePortId))))
   }
 }
