@@ -19,7 +19,11 @@
 
 package org.apache.texera.amber.engine.architecture.logreplay
 
-import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity}
+import org.apache.texera.amber.core.virtualidentity.{
+  ActorVirtualIdentity,
+  ChannelIdentity,
+  EmbeddedControlMessageIdentity
+}
 import org.apache.texera.amber.engine.architecture.common.ProcessingStepCursor
 import org.apache.texera.amber.engine.architecture.worker.WorkflowWorker.MainThreadDelegateMessage
 import org.apache.texera.amber.engine.common.ambermessage.{
@@ -27,6 +31,7 @@ import org.apache.texera.amber.engine.common.ambermessage.{
   WorkflowFIFOMessage,
   WorkflowFIFOMessagePayload
 }
+import org.apache.texera.amber.engine.common.storage.EmptyRecordStorage
 import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable
@@ -36,8 +41,10 @@ class EmptyReplayLogManagerImplSpec extends AnyFlatSpec {
   private val channel =
     ChannelIdentity(ActorVirtualIdentity("from"), ActorVirtualIdentity("to"), isControl = false)
 
-  private def fifo(seq: Long, payload: WorkflowFIFOMessagePayload = DataFrame(Array.empty))
-      : WorkflowFIFOMessage =
+  private def fifo(
+      seq: Long,
+      payload: WorkflowFIFOMessagePayload = DataFrame(Array.empty)
+  ): WorkflowFIFOMessage =
     WorkflowFIFOMessage(channel, seq, payload)
 
   private class CapturingHandler {
@@ -54,9 +61,12 @@ class EmptyReplayLogManagerImplSpec extends AnyFlatSpec {
 
   it should "no-op on setupWriter / markAsReplayDestination / terminate" in {
     val mgr = new EmptyReplayLogManagerImpl(_ => ())
-    // None of these should throw or change observable state.
-    mgr.setupWriter(null)
-    mgr.markAsReplayDestination(null)
+    // Use real fixtures rather than nulls so the test reflects realistic
+    // call sites and would catch an accidental NPE if the no-op shape ever
+    // changes.
+    val writer = new EmptyRecordStorage[ReplayLogRecord]().getWriter("x")
+    mgr.setupWriter(writer)
+    mgr.markAsReplayDestination(EmbeddedControlMessageIdentity("test"))
     mgr.terminate()
     assert(mgr.getStep == ProcessingStepCursor.INIT_STEP)
   }
@@ -71,10 +81,12 @@ class EmptyReplayLogManagerImplSpec extends AnyFlatSpec {
 
   "ReplayLogManager.withFaultTolerant" should "advance the step counter after the body runs" in {
     val mgr = new EmptyReplayLogManagerImpl(_ => ())
-    mgr.withFaultTolerant(channel, Some(fifo(1L)))(())
-    assert(mgr.getStep == 0L)
-    mgr.withFaultTolerant(channel, Some(fifo(2L)))(())
-    assert(mgr.getStep == 1L)
+    // Express the expected step relative to INIT_STEP so the test does not
+    // need to be touched if the initial-step constant ever changes.
+    mgr.withFaultTolerant(channel, Some(fifo(1L))) {}
+    assert(mgr.getStep == ProcessingStepCursor.INIT_STEP + 1)
+    mgr.withFaultTolerant(channel, Some(fifo(2L))) {}
+    assert(mgr.getStep == ProcessingStepCursor.INIT_STEP + 2)
   }
 
   it should "still advance the step counter and rethrow when the body throws" in {
@@ -84,6 +96,6 @@ class EmptyReplayLogManagerImplSpec extends AnyFlatSpec {
         throw new RuntimeException("boom")
       }
     }
-    assert(mgr.getStep == 0L)
+    assert(mgr.getStep == ProcessingStepCursor.INIT_STEP + 1)
   }
 }
