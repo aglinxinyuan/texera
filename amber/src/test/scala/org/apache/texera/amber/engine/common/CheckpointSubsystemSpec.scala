@@ -19,11 +19,43 @@
 
 package org.apache.texera.amber.engine.common
 
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.serialization.{Serialization, SerializationExtension}
+import org.apache.pekko.testkit.TestKit
 import org.apache.texera.amber.core.tuple.TupleLike
 import org.apache.texera.amber.core.workflow.PortIdentity
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 
-class CheckpointSubsystemSpec extends AnyFlatSpec {
+class CheckpointSubsystemSpec extends AnyFlatSpec with BeforeAndAfterAll {
+
+  // Suite-local actor system. We also inject it into AmberRuntime via
+  // reflection so that CheckpointState.save/load (which hard-code
+  // AmberRuntime.serde) reuse the same system. Both the suite-local system
+  // and AmberRuntime's reference are torn down in afterAll, so no Pekko
+  // threads outlive the test (matching ControllerSpec/WorkerSpec hygiene).
+  private val testSystem: ActorSystem =
+    ActorSystem("CheckpointSubsystemSpec-test", AmberRuntime.akkaConfig)
+  private val testSerde: Serialization = SerializationExtension(testSystem)
+
+  private def setAmberRuntimeField(name: String, value: AnyRef): Unit = {
+    val field = AmberRuntime.getClass.getDeclaredField(name)
+    field.setAccessible(true)
+    field.set(AmberRuntime, value)
+  }
+
+  override protected def beforeAll(): Unit = {
+    super.beforeAll()
+    setAmberRuntimeField("_actorSystem", testSystem)
+    setAmberRuntimeField("_serde", testSerde)
+  }
+
+  override protected def afterAll(): Unit = {
+    setAmberRuntimeField("_serde", null)
+    setAmberRuntimeField("_actorSystem", null)
+    TestKit.shutdownActorSystem(testSystem)
+    super.afterAll()
+  }
 
   // ---------------------------------------------------------------------------
   // SerializedState
@@ -39,12 +71,14 @@ class CheckpointSubsystemSpec extends AnyFlatSpec {
     assert(SerializedState.OUTPUT_MSG_KEY == "Amber_Output_Messages")
   }
 
-  it should "round-trip a value through fromObject / toObject using the configured Serialization" in {
+  it should "round-trip a value through fromObject / toObject using a suite-local Serialization" in {
+    // Use the suite-local serde directly so this case does not even touch
+    // AmberRuntime.
     val original: java.lang.Integer = Integer.valueOf(42)
-    val state = SerializedState.fromObject(original, AmberRuntime.serde)
+    val state = SerializedState.fromObject(original, testSerde)
     assert(state.bytes.length > 0)
     assert(state.size() == state.bytes.length.toLong)
-    val restored = state.toObject[java.lang.Integer](AmberRuntime.serde)
+    val restored = state.toObject[java.lang.Integer](testSerde)
     assert(restored == original)
   }
 
