@@ -24,11 +24,13 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class MapOpExecSpec extends AnyFlatSpec {
 
-  private val schema: Schema =
-    Schema().add(new Attribute("v", AttributeType.INTEGER))
+  private val vAttr = new Attribute("v", AttributeType.INTEGER)
+  private val schema: Schema = Schema().add(vAttr)
 
+  // Use the schema's Attribute when adding fields so the helper stays
+  // consistent with the schema under test.
   private def tuple(v: Int): Tuple =
-    Tuple.builder(schema).add(new Attribute("v", AttributeType.INTEGER), Integer.valueOf(v)).build()
+    Tuple.builder(schema).add(schema.getAttribute("v"), Integer.valueOf(v)).build()
 
   private class TestMap extends MapOpExec
 
@@ -40,14 +42,16 @@ class MapOpExecSpec extends AnyFlatSpec {
     assert(out == List(tuple(6)))
   }
 
-  it should "preserve identity when mapFunc returns the input tuple" in {
+  it should "return the same instance when mapFunc returns the input tuple" in {
     val exec = new TestMap()
     exec.setMapFunc((t: Tuple) => t)
 
     val input = tuple(7)
     val out = exec.processTuple(input, 0).toList
     assert(out.size == 1)
-    assert(out.head.asInstanceOf[Tuple] == input)
+    // Reference identity: processTuple should not copy or rebuild the tuple
+    // when mapFunc returns the same instance.
+    assert(out.head eq input)
   }
 
   it should "always wrap the result in a single-element iterator" in {
