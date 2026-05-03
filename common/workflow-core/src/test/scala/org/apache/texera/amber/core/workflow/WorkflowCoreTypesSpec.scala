@@ -236,9 +236,15 @@ class WorkflowCoreTypesSpec extends AnyFlatSpec {
       newPhysicalOp("a").withOutputPorts(List(OutputPort(PortIdentity(0), blocking = true)))
     val opOpen =
       newPhysicalOp("b").withOutputPorts(List(OutputPort(PortIdentity(0), blocking = false)))
-    val link = PhysicalLink(opId("x"), PortIdentity(0), opId("y"), PortIdentity(0))
-    assert(opBlocking.isOutputLinkBlocking(link))
-    assert(!opOpen.isOutputLinkBlocking(link))
+    // Each link's `fromOpId` is set to the operator under test, so the test
+    // remains correct if `isOutputLinkBlocking` is later tightened to
+    // validate `fromOpId == this.id`.
+    val blockingLink =
+      PhysicalLink(opId("a"), PortIdentity(0), opId("downstream"), PortIdentity(0))
+    val openLink =
+      PhysicalLink(opId("b"), PortIdentity(0), opId("downstream"), PortIdentity(0))
+    assert(opBlocking.isOutputLinkBlocking(blockingLink))
+    assert(!opOpen.isOutputLinkBlocking(openLink))
   }
 
   // ---------------------------------------------------------------------------
