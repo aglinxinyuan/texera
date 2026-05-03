@@ -31,7 +31,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class SklearnOpDescRegistrySpec extends AnyFlatSpec {
 
   // ---------------------------------------------------------------------------
-  // Classifier registry (24 concrete SklearnClassifierOpDesc subclasses)
+  // Classifier registry (25 concrete SklearnClassifierOpDesc subclasses)
   // ---------------------------------------------------------------------------
 
   private val classifierEntries: List[(SklearnClassifierOpDesc, String, String)] = List(
@@ -50,6 +50,11 @@ class SklearnOpDescRegistrySpec extends AnyFlatSpec {
       new SklearnComplementNaiveBayesOpDesc(),
       "from sklearn.naive_bayes import ComplementNB",
       "Complement Naive Bayes"
+    ),
+    (
+      new SklearnDummyClassifierOpDesc(),
+      "from sklearn.dummy import DummyClassifier",
+      "Dummy Classifier"
     ),
     (
       new SklearnDecisionTreeOpDesc(),
@@ -186,7 +191,7 @@ class SklearnOpDescRegistrySpec extends AnyFlatSpec {
     (
       new SklearnTrainingBaggingOpDesc(),
       "from sklearn.ensemble import BaggingClassifier",
-      "Training: Bagging Training" // current source value (typo-style duplication preserved)
+      "Training: Bagging"
     ),
     (
       new SklearnTrainingBernoulliNaiveBayesOpDesc(),
@@ -205,7 +210,7 @@ class SklearnOpDescRegistrySpec extends AnyFlatSpec {
     ),
     (
       new SklearnTrainingDummyClassifierOpDesc(),
-      "from sklearn.dummy import dummy", // current source value (typo preserved — should be DummyClassifier)
+      "from sklearn.dummy import DummyClassifier",
       "Training: Dummy Classifier"
     ),
     (
