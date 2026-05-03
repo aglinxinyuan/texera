@@ -44,11 +44,52 @@ class CongestionControlSpec extends AnyFlatSpec {
     assert(!cc.canSend)
   }
 
+  it should "stay true while in-transit count is below the grown window" in {
+    val cc = new CongestionControl()
+    // After three slow-start acks, the window should be at least 4. Verify
+    // that three in-transit messages still leave room for more.
+    (1L to 3L).foreach { i =>
+      cc.markMessageInTransit(msg(i))
+      cc.ack(i)
+    }
+    cc.markMessageInTransit(msg(10L))
+    cc.markMessageInTransit(msg(11L))
+    cc.markMessageInTransit(msg(12L))
+    assert(cc.canSend, "window grew via slow start; 3 in-transit must not yet hit the cap")
+  }
+
+  it should "absorb arbitrarily many enqueued messages even when the window is full" in {
+    val cc = new CongestionControl()
+    cc.markMessageInTransit(msg(1L)) // fills window-of-1
+    assert(!cc.canSend)
+    // Receivers may push many more while we are blocked; they must all queue
+    // up and surface via getAllMessages without truncation or error.
+    (10L until 30L).foreach(i => cc.enqueueMessage(msg(i)))
+    val all = cc.getAllMessages.map(_.messageId).toSet
+    assert(all.contains(1L))
+    assert((10L until 30L).forall(all.contains))
+  }
+
   "CongestionControl.ack" should "be a no-op for an unknown message id" in {
     val cc = new CongestionControl()
     cc.markMessageInTransit(msg(1L))
     cc.ack(99L)
+    // Observable contract: existing in-transit message is preserved, no
+    // state changes. (CongestionControl.ack also logs the unknown id at
+    // debug level via AmberLogging — verifying the log line itself is out
+    // of scope here; we lock down the state-level no-op.)
     assert(cc.getInTransitMessages.exists(_.messageId == 1L))
+    assert(cc.getInTransitMessages.size == 1)
+    assert(!cc.canSend)
+  }
+
+  it should "be a no-op when the same message id is acked twice" in {
+    val cc = new CongestionControl()
+    cc.markMessageInTransit(msg(1L))
+    cc.ack(1L)
+    val sizeAfterFirst = cc.getInTransitMessages.size
+    cc.ack(1L) // duplicate ack — must not throw or further alter state
+    assert(cc.getInTransitMessages.size == sizeAfterFirst)
   }
 
   it should "remove an acked in-transit message and allow more sending" in {
