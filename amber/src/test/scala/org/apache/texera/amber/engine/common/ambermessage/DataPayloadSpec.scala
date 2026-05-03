@@ -24,11 +24,13 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class DataPayloadSpec extends AnyFlatSpec {
 
-  private val schema: Schema =
-    Schema().add(new Attribute("v", AttributeType.INTEGER))
+  private val vAttr = new Attribute("v", AttributeType.INTEGER)
+  private val schema: Schema = Schema().add(vAttr)
 
+  // Use the schema's Attribute when adding fields so the helper is always
+  // consistent with the schema under test.
   private def tuple(v: Int): Tuple =
-    Tuple.builder(schema).add(new Attribute("v", AttributeType.INTEGER), Integer.valueOf(v)).build()
+    Tuple.builder(schema).add(schema.getAttribute("v"), Integer.valueOf(v)).build()
 
   "DataFrame.inMemSize" should "be zero for an empty frame" in {
     assert(DataFrame(Array.empty).inMemSize == 0L)
@@ -41,7 +43,12 @@ class DataPayloadSpec extends AnyFlatSpec {
     assert(df.inMemSize == a.inMemSize + b.inMemSize)
   }
 
-  "DataFrame.equals" should "consider two empty frames equal" in {
+  "DataFrame.equals" should "be reflexive on a single empty frame instance" in {
+    val df = DataFrame(Array.empty)
+    assert(df == df)
+  }
+
+  it should "consider two distinct empty frames equal" in {
     assert(DataFrame(Array.empty) == DataFrame(Array.empty))
   }
 
