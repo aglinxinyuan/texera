@@ -24,7 +24,8 @@ import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, Chann
 import org.apache.texera.amber.engine.architecture.common.WorkflowActor.NetworkMessage
 import org.apache.texera.amber.engine.common.ambermessage.{
   WorkflowFIFOMessage,
-  WorkflowFIFOMessagePayload
+  WorkflowFIFOMessagePayload,
+  WorkflowMessage
 }
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -37,10 +38,14 @@ class FlowControlSpec extends AnyFlatSpec {
   // the 200L default branch — using DataFrame(Array.empty) yields 0 bytes, which
   // would let any message squeeze through even when the configured credit is 0.
   private case class FixedSizePayload() extends WorkflowFIFOMessagePayload
-  private val fixedMsgSize = 200L
 
   private def msg(id: Long): NetworkMessage =
     NetworkMessage(id, WorkflowFIFOMessage(channelId, id, FixedSizePayload()))
+
+  // Pin the assumed payload size so the test fails loudly if WorkflowMessage's
+  // size accounting changes in a way that would invalidate the credit math below.
+  private val msgSize: Long = WorkflowMessage.getInMemSize(msg(0).internalMessage)
+  assert(msgSize == 200L)
 
   private val maxBytes = ApplicationConfig.maxCreditAllowedInBytesPerChannel
 
@@ -94,15 +99,16 @@ class FlowControlSpec extends AnyFlatSpec {
     assert(fc.getCredit == maxBytes - 50L)
   }
 
-  "FlowControl.decreaseInflightCredit" should "adjust the available credit by the amount removed" in {
+  "FlowControl.decreaseInflightCredit" should "free credit equal to the acked amount" in {
     val fc = new FlowControl()
-    // Subtracting a negative amount equivalently grows the inflight bucket. This
-    // exercises the accounting formula `maxBytes - inflightCredit - queuedCredit`
-    // without requiring a sized payload to seed inflight.
-    fc.decreaseInflightCredit(-100L)
-    assert(fc.getCredit == maxBytes - 100L)
 
-    fc.decreaseInflightCredit(100L) // restore inflight to 0
+    // Send a message through to seed `inflightCredit` with the actual size used
+    // by FlowControl's accounting. This avoids passing an invalid (negative)
+    // amount to `decreaseInflightCredit`.
+    fc.getMessagesToSend(msg(1L)).toList
+    assert(fc.getCredit == maxBytes - msgSize)
+
+    fc.decreaseInflightCredit(msgSize)
     assert(fc.getCredit == maxBytes)
   }
 }
