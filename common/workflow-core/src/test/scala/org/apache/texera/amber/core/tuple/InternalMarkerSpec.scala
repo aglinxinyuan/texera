@@ -38,9 +38,15 @@ class InternalMarkerSpec extends AnyFlatSpec {
   }
 
   it should "respect case-class equality on the constructor arguments" in {
-    assert(FinalizePort(PortIdentity(0), input = true) == FinalizePort(PortIdentity(0), input = true))
-    assert(FinalizePort(PortIdentity(0), input = true) != FinalizePort(PortIdentity(0), input = false))
-    assert(FinalizePort(PortIdentity(0), input = true) != FinalizePort(PortIdentity(1), input = true))
+    assert(
+      FinalizePort(PortIdentity(0), input = true) == FinalizePort(PortIdentity(0), input = true)
+    )
+    assert(
+      FinalizePort(PortIdentity(0), input = true) != FinalizePort(PortIdentity(0), input = false)
+    )
+    assert(
+      FinalizePort(PortIdentity(0), input = true) != FinalizePort(PortIdentity(1), input = true)
+    )
   }
 
   "FinalizeExecutor" should "be a TupleLike with empty getFields and zero inMemSize" in {
@@ -54,9 +60,17 @@ class InternalMarkerSpec extends AnyFlatSpec {
     assert(FinalizeExecutor() == FinalizeExecutor())
   }
 
-  "InternalMarker" should "be distinguishable from FinalizePort vs FinalizeExecutor at the type level" in {
-    val a: TupleLike = FinalizePort(PortIdentity(0), input = true)
-    val b: TupleLike = FinalizeExecutor()
-    assert(a != b)
+  "InternalMarker" should "be distinguishable via pattern matching" in {
+    val markers: List[TupleLike] = List(
+      FinalizePort(PortIdentity(0), input = true),
+      FinalizeExecutor()
+    )
+    val classified = markers.map {
+      case FinalizePort(_, _)    => "port"
+      case FinalizeExecutor()    => "executor"
+      case other: InternalMarker => s"other-marker:$other"
+      case other                 => s"non-marker:$other"
+    }
+    assert(classified == List("port", "executor"))
   }
 }
