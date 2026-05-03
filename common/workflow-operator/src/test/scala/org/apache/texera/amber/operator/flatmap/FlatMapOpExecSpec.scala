@@ -39,6 +39,50 @@ class FlatMapOpExecSpec extends AnyFlatSpec {
     assert(out.forall(_.asInstanceOf[Tuple] == tuple(1)))
   }
 
+  it should "apply a duplicating flatMap (1 → 2) across a stream of tuples" in {
+    val exec = new FlatMapOpExec()
+    exec.setFlatMapFunc(t => Iterator(t, t))
+    val out = (1 to 4).flatMap(v => exec.processTuple(tuple(v), 0).toList)
+    assert(out.size == 8)
+    val expected = (1 to 4).flatMap(v => List(tuple(v), tuple(v)))
+    assert(out.map(_.asInstanceOf[Tuple]) == expected)
+  }
+
+  it should "apply an expanding flatMap that fans out by the input value" in {
+    val exec = new FlatMapOpExec()
+    exec.setFlatMapFunc { (t: Tuple) =>
+      val n = t.getField[Int]("v")
+      (1 to n).map(_ => t).iterator
+    }
+    val out = exec.processTuple(tuple(3), 0).toList
+    assert(out.size == 3)
+    assert(out.forall(_.asInstanceOf[Tuple] == tuple(3)))
+  }
+
+  it should "apply a filtering flatMap that drops some inputs entirely" in {
+    val exec = new FlatMapOpExec()
+    // Keep only odd values
+    exec.setFlatMapFunc { (t: Tuple) =>
+      if (t.getField[Int]("v") % 2 == 1) Iterator.single(t) else Iterator.empty
+    }
+    val out = (1 to 5).flatMap(v => exec.processTuple(tuple(v), 0).toList)
+    assert(out.map(_.asInstanceOf[Tuple]) == List(tuple(1), tuple(3), tuple(5)))
+  }
+
+  it should "apply a stateful flatMap (closes over an external counter)" in {
+    val exec = new FlatMapOpExec()
+    var counter = 0
+    exec.setFlatMapFunc { (t: Tuple) =>
+      counter += 1
+      val emit = (1 to counter).map(_ => t)
+      emit.iterator
+    }
+    val out = (0 until 3).flatMap(_ => exec.processTuple(tuple(7), 0).toList)
+    // counter goes 1, 2, 3 → outputs 1+2+3 = 6 tuples
+    assert(out.size == 6)
+    assert(counter == 3)
+  }
+
   it should "emit nothing when the flatMapFunc returns an empty iterator" in {
     val exec = new FlatMapOpExec()
     exec.setFlatMapFunc(_ => Iterator.empty)
