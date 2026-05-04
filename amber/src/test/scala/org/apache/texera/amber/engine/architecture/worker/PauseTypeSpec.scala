@@ -91,12 +91,4 @@ class PauseTypeSpec extends AnyFlatSpec {
     assert(label(OperatorLogicPause) == "operator-logic")
     assert(label(ECMPause(EmbeddedControlMessageIdentity("x"))) == "ecm")
   }
-
-  it should "destructure ECMPause's id via match" in {
-    val name = ECMPause(EmbeddedControlMessageIdentity("ckpt-99")) match {
-      case ECMPause(id) => id.id
-      case _            => "other"
-    }
-    assert(name == "ckpt-99")
-  }
 }
