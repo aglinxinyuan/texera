@@ -206,17 +206,14 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     assert(value.asInstanceOf[Array[Byte]].sameElements(bytes))
   }
 
-  it should "preserve null payload values across all types" in {
-    Seq(
-      new Attribute("v_int", AttributeType.INTEGER),
-      new Attribute("v_str", AttributeType.STRING),
-      new Attribute("v_dbl", AttributeType.DOUBLE),
-      new Attribute("v_bool", AttributeType.BOOLEAN),
-      new Attribute("v_ts", AttributeType.TIMESTAMP)
-    ).foreach { attr =>
+  it should "preserve null payload values for every AttributeType" in {
+    // Cover every member of `AttributeType` (Java enum). Avoid hand-listing —
+    // a future addition to the enum would still be tested.
+    AttributeType.values.foreach { tpe =>
+      val attr = new Attribute(s"v_${tpe.name().toLowerCase}", tpe)
       val (flag, value) = flagRoundTrip(attr, null)
       assert(flag)
-      assert(value == null, s"null payload must survive round-trip for ${attr.getType}")
+      assert(value == null, s"null payload must survive round-trip for $tpe")
     }
   }
 }
