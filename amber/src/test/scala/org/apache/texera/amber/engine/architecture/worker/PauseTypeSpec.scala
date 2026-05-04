@@ -25,13 +25,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 class PauseTypeSpec extends AnyFlatSpec {
 
   // --- singletons ------------------------------------------------------------
+  //
+  // The sealed-trait subtype relationship is enforced at compile time by the
+  // type ascriptions (`val u: PauseType = UserPause`, etc.) used below. There
+  // is no runtime test for "singletons extend PauseType" because that would
+  // be tautological — if any singleton stopped extending the trait, this
+  // file would fail to compile.
 
-  "PauseType singletons" should "all extend the sealed trait PauseType" in {
-    val all: List[PauseType] = List(UserPause, BackpressurePause, OperatorLogicPause)
-    all.foreach(p => assert(p.isInstanceOf[PauseType]))
-  }
-
-  it should "compare equal to themselves and unequal to each other" in {
+  "PauseType singletons" should "compare equal to themselves and unequal to each other" in {
     // Widen to PauseType so the compiler doesn't reduce inter-singleton
     // comparisons to constant `false` at compile time.
     val u: PauseType = UserPause
@@ -68,9 +69,11 @@ class PauseTypeSpec extends AnyFlatSpec {
     assert(a != c)
   }
 
-  it should "be a PauseType but not equal to any of the singleton PauseTypes" in {
+  it should "not equal any of the singleton PauseTypes" in {
+    // Subtype relationship is already proven by the `: PauseType` ascription;
+    // what we actually want to lock down here is the cross-kind inequality:
+    // an ECMPause (with any id) must not collide with any singleton kind.
     val p: PauseType = ECMPause(EmbeddedControlMessageIdentity("ckpt"))
-    assert(p.isInstanceOf[PauseType])
     assert(p != UserPause)
     assert(p != BackpressurePause)
     assert(p != OperatorLogicPause)
