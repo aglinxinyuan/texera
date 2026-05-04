@@ -102,8 +102,8 @@ class TupleUtilsSpec extends AnyFlatSpec {
     assert(tuple.getFields.isEmpty)
   }
 
-  it should "throw when given malformed JSON" in {
-    intercept[Exception] {
+  it should "throw a Jackson parse exception when given malformed JSON" in {
+    intercept[com.fasterxml.jackson.core.JsonProcessingException] {
       TupleUtils.json2tuple("{ this is not json }")
     }
   }
