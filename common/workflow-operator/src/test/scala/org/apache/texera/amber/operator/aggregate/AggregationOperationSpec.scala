@@ -25,18 +25,20 @@ import org.scalatest.flatspec.AnyFlatSpec
 /**
   * Coverage notes:
   * `AggregateOpSpec` (in this same package) already exercises the happy paths for
-  * `getAggregationAttribute`, the per-kind `init/iterate/merge/finalAgg` semantics
+  * `getAggregationAttribute`, the per-kind `init` / `iterate` / `finalAgg` semantics
   * (SUM/COUNT/AVERAGE/MIN/MAX/CONCAT, including null-handling and AVERAGE-of-empty),
   * and the `getFinal` rewrite. This spec deliberately does NOT duplicate those.
   *
   * What this spec adds:
-  * - `getAggFunc` validation errors (non-numeric types, null aggFunction).
-  * - The CONCAT-specific `merge` partial-combination behavior (no per-tuple
-  *   iterate test in `AggregateOpSpec` calls `merge` directly).
+  * - `getAggFunc` validation errors (unsupported attribute types on SUM/MIN/MAX,
+  *   null aggFunction). Note: SUM/MIN/MAX do accept TIMESTAMP alongside numerics.
+  * - The CONCAT-specific `merge` partial-combination behavior — `AggregateOpSpec`
+  *   exercises iterate/finalAgg but never calls `merge` directly.
   * - A two-stage worker→final pipeline that runs a real partial aggregation
   *   on each "worker", emits a partial tuple, then applies `getFinal` and
   *   re-aggregates the partials end-to-end.
-  * - `AveragePartialObj` value-class exposure.
+  * - `AveragePartialObj` (a plain `case class`, not a value class) field
+  *   exposure and case-class value equality / hashCode.
   */
 class AggregationOperationSpec extends AnyFlatSpec {
 
@@ -62,14 +64,16 @@ class AggregationOperationSpec extends AnyFlatSpec {
 
   // --- getAggFunc: type validation (not covered in AggregateOpSpec) ----------
 
-  "AggregationOperation.getAggFunc" should "throw UnsupportedOperationException for non-numeric types on SUM" in {
+  "AggregationOperation.getAggFunc" should "throw UnsupportedOperationException for unsupported attribute types on SUM" in {
+    // SUM accepts INTEGER/LONG/DOUBLE/TIMESTAMP; STRING is rejected.
     val ex = intercept[UnsupportedOperationException] {
       op(AggregationFunction.SUM).getAggFunc(AttributeType.STRING)
     }
     assert(ex.getMessage.contains("Unsupported attribute type for sum"))
   }
 
-  it should "throw UnsupportedOperationException for non-numeric types on MIN and MAX" in {
+  it should "throw UnsupportedOperationException for unsupported attribute types on MIN and MAX" in {
+    // MIN/MAX accept INTEGER/LONG/DOUBLE/TIMESTAMP; STRING and BOOLEAN are rejected.
     intercept[UnsupportedOperationException] {
       op(AggregationFunction.MIN).getAggFunc(AttributeType.STRING)
     }
