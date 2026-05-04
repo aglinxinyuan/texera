@@ -194,10 +194,11 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     val (flag, value) =
       flagRoundTrip(new Attribute("blob", AttributeType.BINARY), bytes)
     assert(flag)
-    // Tuple stores the same array reference through the round-trip (no copy
-    // semantics in the flag/strip path), so reference equality is the
-    // observable contract here.
-    assert(value.asInstanceOf[Array[Byte]] eq bytes)
+    // Use value-based equality (the Tuple contract elsewhere uses
+    // `sameElements` for Array[Byte]); requiring the *same* array instance
+    // would over-constrain the flag/strip path against future copy-on-write
+    // changes.
+    assert(value.asInstanceOf[Array[Byte]].sameElements(bytes))
   }
 
   it should "preserve null payload values across all types" in {
