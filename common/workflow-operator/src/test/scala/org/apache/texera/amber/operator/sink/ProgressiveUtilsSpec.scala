@@ -70,13 +70,21 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     assert(flagged.getField[String]("name") == "bob")
   }
 
-  it should "fail an assertion if the input tuple already has the flag column" in {
+  it should "fail an assertion if addRetractionFlag is called on an already-flagged tuple" in {
     val alreadyFlagged = ProgressiveUtils.addInsertionFlag(baseTuple(3, "x"), outputSchema)
-    val ex = intercept[AssertionError] {
+    intercept[AssertionError] {
       ProgressiveUtils.addRetractionFlag(alreadyFlagged, outputSchema)
     }
-    // Don't pin the exact message; locking in the AssertionError is enough.
-    assert(ex != null)
+  }
+
+  it should "fail an assertion if addInsertionFlag is called on an already-flagged tuple" in {
+    // Symmetric guard: both addInsertionFlag and addRetractionFlag carry the
+    // same `assert(!containsAttribute(flagAttr))` precondition, and either
+    // one may be called on already-flagged data, so each path should fail.
+    val alreadyFlagged = ProgressiveUtils.addRetractionFlag(baseTuple(4, "y"), outputSchema)
+    intercept[AssertionError] {
+      ProgressiveUtils.addInsertionFlag(alreadyFlagged, outputSchema)
+    }
   }
 
   // --- isInsertion -----------------------------------------------------------
