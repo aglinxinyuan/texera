@@ -111,7 +111,9 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     val flagged = ProgressiveUtils.addInsertionFlag(baseTuple(1, "alice"), outputSchema)
     val (flag, stripped) = ProgressiveUtils.getTupleFlagAndValue(flagged)
     assert(flag)
-    assert(stripped.getSchema.getAttributeNames == List("id", "name"))
+    // Full schema equality (names + types + order) — name-only would let a
+    // type drift on the payload columns slip through.
+    assert(stripped.getSchema == baseSchema)
     assert(stripped.getField[Integer]("id") == 1)
     assert(stripped.getField[String]("name") == "alice")
   }
@@ -120,6 +122,7 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     val flagged = ProgressiveUtils.addRetractionFlag(baseTuple(2, "bob"), outputSchema)
     val (flag, stripped) = ProgressiveUtils.getTupleFlagAndValue(flagged)
     assert(!flag)
+    assert(stripped.getSchema == baseSchema)
     assert(stripped.getField[Integer]("id") == 2)
     assert(stripped.getField[String]("name") == "bob")
   }
