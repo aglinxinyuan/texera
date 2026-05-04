@@ -66,18 +66,19 @@ class AddressInfoSpec extends AnyFlatSpec {
     assert(a.controllerAddress.host.contains("ctrl-a"))
   }
 
-  it should "compare equal under case-class equality when fields match by value" in {
-    // NOTE: case-class equality on `Array` fields uses array reference equality,
-    // not element-wise equality. Two AddressInfo values with arrays that hold
-    // the same elements but are different array instances will NOT be equal.
-    // Lock this down so a future change to (say) Seq doesn't silently flip
-    // the equality semantics for callers.
+  it should "use Array reference equality (not element-wise) for the allAddresses field" in {
+    // Case-class equality on `Array` fields uses array reference equality,
+    // not element-wise equality. Two AddressInfo values that hold the SAME
+    // array instance compare equal; two AddressInfo values that hold
+    // distinct arrays with the SAME elements do NOT. Lock this down so a
+    // future change to (say) Seq doesn't silently flip equality semantics
+    // for callers.
     val nodes = Array(addr("h", 1))
     val ctrl = addr("ctrl", 0)
-    val a = AddressInfo(nodes, ctrl)
-    val b = AddressInfo(nodes, ctrl) // shares the same array reference
-    val c = AddressInfo(Array(addr("h", 1)), ctrl) // different array reference
-    assert(a == b)
-    assert(a != c, "case-class equality on Array uses reference equality")
+    val sameRef = AddressInfo(nodes, ctrl)
+    val sameRefAgain = AddressInfo(nodes, ctrl) // shares the same array reference
+    val differentRef = AddressInfo(Array(addr("h", 1)), ctrl) // different array reference
+    assert(sameRef == sameRefAgain, "shared Array reference → equal")
+    assert(sameRef != differentRef, "distinct Array references → not equal (no element-wise check)")
   }
 }
