@@ -91,4 +91,52 @@ class PauseTypeSpec extends AnyFlatSpec {
     assert(label(OperatorLogicPause) == "operator-logic")
     assert(label(ECMPause(EmbeddedControlMessageIdentity("x"))) == "ecm")
   }
+
+  // --- Set-based coexistence (the contract PauseManager actually relies on) --
+  // PauseManager stores active pauses in a `HashSet[PauseType]` (additive,
+  // no priority — resuming one type only removes that type). The override-order
+  // semantics that the data type would need to support priorities don't exist
+  // in PauseType; the data type only has to behave well as Set elements.
+  // These tests pin that contract here. The multi-pause coexistence behavior
+  // through PauseManager.pause/resume/isPaused is covered separately in
+  // WorkerManagersSpec.
+
+  it should "coexist as distinct elements in a Set without aliasing" in {
+    val active: Set[PauseType] = Set(
+      UserPause,
+      BackpressurePause,
+      OperatorLogicPause,
+      ECMPause(EmbeddedControlMessageIdentity("ckpt-1"))
+    )
+    assert(active.size == 4, "all four pause kinds must be distinct Set elements")
+    assert(active.contains(UserPause))
+    assert(active.contains(BackpressurePause))
+    assert(active.contains(OperatorLogicPause))
+    assert(active.contains(ECMPause(EmbeddedControlMessageIdentity("ckpt-1"))))
+  }
+
+  it should "deduplicate identical pauses inside a Set" in {
+    // PauseManager.pause(t) treats duplicate pauses as a no-op. That works
+    // because Set deduplication leans on PauseType.equals/hashCode — pin it.
+    val active: Set[PauseType] = Set(
+      UserPause,
+      UserPause, // singleton — must collapse
+      ECMPause(EmbeddedControlMessageIdentity("ckpt-1")),
+      ECMPause(EmbeddedControlMessageIdentity("ckpt-1")) // same id — must collapse
+    )
+    assert(active.size == 2)
+  }
+
+  it should "treat ECMPause instances with different ids as distinct Set elements" in {
+    // Two checkpoint pauses with different ids must be independently
+    // tracked, so the manager can resume one without clearing the other.
+    val active: Set[PauseType] = Set(
+      ECMPause(EmbeddedControlMessageIdentity("ckpt-1")),
+      ECMPause(EmbeddedControlMessageIdentity("ckpt-2"))
+    )
+    assert(active.size == 2)
+    val afterResumeFirst = active - ECMPause(EmbeddedControlMessageIdentity("ckpt-1"))
+    assert(afterResumeFirst.size == 1)
+    assert(afterResumeFirst.contains(ECMPause(EmbeddedControlMessageIdentity("ckpt-2"))))
+  }
 }
