@@ -20,13 +20,14 @@
 package org.apache.texera.amber.operator.sklearn
 
 import org.apache.texera.amber.operator.sklearn.training._
+import org.apache.texera.amber.pybuilder.PythonReflectionUtils
 import org.scalatest.flatspec.AnyFlatSpec
 
 /**
   * Pins the wiring (Python import statement + user-friendly model name) for
   * every concrete `SklearnClassifierOpDesc` and `SklearnTrainingOpDesc`. A
   * typo in either string would silently misroute downstream UI labels and
-  * breakage of the generated Python pipeline.
+  * cause breakage in the generated Python pipeline.
   */
 class SklearnOpDescRegistrySpec extends AnyFlatSpec {
 
@@ -342,5 +343,56 @@ class SklearnOpDescRegistrySpec extends AnyFlatSpec {
     val code = desc.generatePythonCode()
     assert(code.contains("from sklearn.linear_model import LogisticRegression"))
     assert(code.contains("ProcessTableOperator"))
+  }
+
+  // ---------------------------------------------------------------------------
+  // Completeness — guard against a new subclass silently bypassing this spec
+  // ---------------------------------------------------------------------------
+  //
+  // Reuse the same classpath scanner that PythonCodeRawInvalidTextSpec uses,
+  // so the two suites agree on what counts as a "concrete" descriptor.
+
+  private def scanConcrete[T](base: Class[T], pkg: String): Set[Class[_]] =
+    PythonReflectionUtils
+      .scanCandidates(
+        base = base,
+        acceptPackages = Seq(pkg),
+        classLoader = Thread.currentThread().getContextClassLoader
+      )
+      .toSet
+
+  "classifierEntries" should
+    "cover every concrete SklearnClassifierOpDesc subclass on the classpath" in {
+    val scanned =
+      scanConcrete(classOf[SklearnClassifierOpDesc], "org.apache.texera.amber.operator.sklearn")
+    val tested = classifierEntries.map(_._1.getClass).toSet[Class[_]]
+    val missing = scanned.diff(tested)
+    val extra = tested.diff(scanned)
+    assert(
+      missing.isEmpty && extra.isEmpty,
+      s"classifierEntries drift — missing on classpath: ${missing
+        .map(_.getName)}, no longer concrete: ${extra.map(_.getName)}"
+    )
+  }
+
+  "trainingEntries" should
+    "cover every concrete SklearnTrainingOpDesc subclass on the classpath" in {
+    val scanned = scanConcrete(
+      classOf[SklearnTrainingOpDesc],
+      "org.apache.texera.amber.operator.sklearn.training"
+    )
+    // SklearnTrainingOpDesc is itself concrete (used as a default fallback),
+    // so the scan picks it up alongside the real subclasses. Exclude it from
+    // the "concrete subclasses" comparison since it is not part of the
+    // registry being pinned.
+    val concreteSubclasses = scanned - classOf[SklearnTrainingOpDesc]
+    val tested = trainingEntries.map(_._1.getClass).toSet[Class[_]]
+    val missing = concreteSubclasses.diff(tested)
+    val extra = tested.diff(concreteSubclasses)
+    assert(
+      missing.isEmpty && extra.isEmpty,
+      s"trainingEntries drift — missing on classpath: ${missing
+        .map(_.getName)}, no longer concrete: ${extra.map(_.getName)}"
+    )
   }
 }
