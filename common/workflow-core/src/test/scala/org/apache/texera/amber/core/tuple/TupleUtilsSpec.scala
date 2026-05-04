@@ -21,6 +21,8 @@ package org.apache.texera.amber.core.tuple
 
 import org.scalatest.flatspec.AnyFlatSpec
 
+import scala.jdk.CollectionConverters._
+
 class TupleUtilsSpec extends AnyFlatSpec {
 
   // --- tuple2json ------------------------------------------------------------
@@ -33,9 +35,7 @@ class TupleUtilsSpec extends AnyFlatSpec {
     val node = TupleUtils.tuple2json(schema, Array[Any](Int.box(7), "alice"))
     // Field iteration order on Jackson ObjectNode follows insertion order,
     // which mirrors the schema's getAttributeNames order.
-    val keys = new java.util.ArrayList[String]()
-    node.fieldNames().forEachRemaining(k => keys.add(k))
-    assert(scala.jdk.CollectionConverters.ListHasAsScala(keys).asScala.toList == List("id", "name"))
+    assert(node.fieldNames().asScala.toList == List("id", "name"))
     assert(node.get("id").asInt() == 7)
     assert(node.get("name").asText() == "alice")
   }
