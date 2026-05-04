@@ -124,14 +124,16 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     assert(stripped.getField[String]("name") == "bob")
   }
 
-  it should "treat an unflagged tuple as insertion and pass the original schema through unchanged" in {
+  it should "treat an unflagged tuple as insertion and pass an equivalent schema through unchanged" in {
     // For a tuple that doesn't carry the flag column, isInsertion returns
-    // true and getPartialSchema returns the same schema (filterNot removes
-    // nothing). The values must round-trip intact.
+    // true and getPartialSchema returns an equivalent Schema — same attributes
+    // in the same order (filterNot removes nothing). Note that
+    // Schema.getPartialSchema constructs a new instance every time, so this
+    // is structural equality, not reference identity.
     val raw = baseTuple(3, "carol")
     val (flag, stripped) = ProgressiveUtils.getTupleFlagAndValue(raw)
     assert(flag)
-    assert(stripped.getSchema.getAttributeNames == List("id", "name"))
+    assert(stripped.getSchema == raw.getSchema)
     assert(stripped.getField[Integer]("id") == 3)
     assert(stripped.getField[String]("name") == "carol")
   }
