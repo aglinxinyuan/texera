@@ -27,9 +27,13 @@ import org.apache.texera.amber.core.virtualidentity.{
   ChannelIdentity,
   EmbeddedControlMessageIdentity
 }
+import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{
+  AsyncRPCContext,
+  ControlInvocation,
+  EmptyRequest
+}
 import org.apache.texera.amber.engine.common.AmberRuntime
 import org.apache.texera.amber.engine.common.ambermessage.{
-  DataFrame,
   WorkflowFIFOMessage,
   WorkflowFIFOMessagePayload
 }
@@ -131,13 +135,29 @@ class LogreplayPrimitivesSpec extends AnyFlatSpec with BeforeAndAfterAll {
     assert(drained.toList == List(ProcessingStep(cidA, 0L), ProcessingStep(cidB, 1L)))
   }
 
-  "ReplayLoggerImpl.markAsReplayDestination" should "append a ReplayDestination record to the buffer" in {
+  "ReplayLoggerImpl.markAsReplayDestination" should
+    "preserve exact ordering: in-flight ProcessingStep, then ReplayDestination, then synthetic trailing step" in {
+    // ReplayLogGenerator depends on the relative position of ReplayDestination
+    // within the record stream — replay stops at it. So a `contains` check
+    // would silently accept a regression that duplicated ReplayDestination or
+    // moved it after the synthetic trailing ProcessingStep emitted by drain.
+    // Pin the full sequence instead.
     val l = new ReplayLoggerImpl()
     val ecm = EmbeddedControlMessageIdentity("checkpoint-1")
+    l.logCurrentStepWithMessage(0L, cidA, None) // sets currentChannelId, appends ProcessingStep
     l.markAsReplayDestination(ecm)
-    val drained = l.drainCurrentLogRecords(0L)
-    // drain emits a trailing ProcessingStep too (lastStep != step), which is OK.
-    assert(drained.contains(ReplayDestination(ecm)))
+    // Drain at a step beyond lastStep so the synthetic trailing ProcessingStep
+    // is also emitted; this is exactly the production drain behavior we need
+    // to lock down (the synthetic step must come AFTER the destination).
+    val drained = l.drainCurrentLogRecords(3L).toList
+    assert(
+      drained == List(
+        ProcessingStep(cidA, 0L),
+        ReplayDestination(ecm),
+        ProcessingStep(cidA, 3L)
+      ),
+      s"unexpected record order: $drained"
+    )
   }
 
   "ReplayLoggerImpl.drainCurrentLogRecords" should "clear the buffer between drains" in {
@@ -271,6 +291,38 @@ class LogreplayPrimitivesSpec extends AnyFlatSpec with BeforeAndAfterAll {
     assert(fired == 1)
   }
 
+  it should "consume every queue entry sharing the current step (the duplicate-step while loop)" in {
+    // canProceed contains a `while (head.step == step) forwardNext()` loop
+    // specifically because checkpoints produce duplicate step records (the
+    // MainThreadDelegateMessage path emits an extra ProcessingStep at the
+    // same step). A regression that consumed only one entry per step would
+    // leave a stale duplicate at the head, so a subsequent canProceed at
+    // the next step would still see the old channel — not the real next one.
+    // Pin the multi-consume behavior with two adjacent same-step entries.
+    val mgr = new StubLogManager(_ => ())
+    mgr.setStep(0L)
+    val q = mutable.Queue[ProcessingStep](
+      ProcessingStep(cidA, 0L),
+      ProcessingStep(cidB, 0L), // duplicate step — must be consumed too
+      ProcessingStep(cidC, 1L)
+    )
+    val enf = new ReplayOrderEnforcer(mgr, q, startStep = -1L, () => ())
+
+    // After both step-0 entries are consumed, currentChannelId is the LAST
+    // one (cidB). cidA was the head but is no longer the active channel.
+    assert(enf.canProceed(cidB), "the second step-0 entry (cidB) must be the active channel")
+    assert(
+      !enf.canProceed(cidA),
+      "cidA was consumed by the duplicate-step while loop and is no longer active"
+    )
+    assert(!enf.isCompleted, "step 1 (cidC) is still queued")
+
+    // Advancing to step 1 consumes cidC, leaving the queue empty.
+    mgr.setStep(1L)
+    assert(enf.canProceed(cidC))
+    assert(enf.isCompleted)
+  }
+
   // ---------------------------------------------------------------------------
   // ReplayLogRecord serde
   // ---------------------------------------------------------------------------
@@ -285,12 +337,28 @@ class LogreplayPrimitivesSpec extends AnyFlatSpec with BeforeAndAfterAll {
     AmberRuntime.serde.deserialize(bytes, classOf[ReplayLogRecord]).get
   }
 
-  "ReplayLogRecord MessageContent" should "round-trip through AmberRuntime.serde" in {
-    val msg = WorkflowFIFOMessage(cidA, 1L, DataFrame(Array.empty))
+  "ReplayLogRecord MessageContent" should "round-trip a DirectControlMessagePayload through AmberRuntime.serde" in {
+    // Production never writes a DataFrame to the replay log: both the
+    // controller and DP-thread paths filter for `DirectControlMessagePayload`
+    // before logging (see `Controller.scala` /
+    // `DataProcessor.scala` use of `_.payload.isInstanceOf[DirectControlMessagePayload]`).
+    // Round-trip the only payload kind the production serializer is actually
+    // exercised on.
+    val payload = ControlInvocation(
+      methodName = "doNothing",
+      command = EmptyRequest(),
+      context = AsyncRPCContext(workerId, workerId),
+      commandId = 42L
+    )
+    val msg = WorkflowFIFOMessage(cidA, 1L, payload)
     val original: ReplayLogRecord = MessageContent(msg)
     val restored = roundTrip(original)
     assert(restored == original)
-    assert(restored.asInstanceOf[MessageContent].message == msg)
+    val restoredMsg = restored.asInstanceOf[MessageContent].message
+    assert(restoredMsg == msg)
+    val restoredPayload = restoredMsg.payload.asInstanceOf[ControlInvocation]
+    assert(restoredPayload.methodName == "doNothing")
+    assert(restoredPayload.commandId == 42L)
   }
 
   "ReplayLogRecord ProcessingStep" should "round-trip through AmberRuntime.serde" in {
