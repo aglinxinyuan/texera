@@ -135,4 +135,82 @@ class ProgressiveUtilsSpec extends AnyFlatSpec {
     assert(stripped.getField[Integer]("id") == 3)
     assert(stripped.getField[String]("name") == "carol")
   }
+
+  // --- typed payload round-trips --------------------------------------------
+  // Nothing in `addInsertionFlag` / `getTupleFlagAndValue` is type-specific —
+  // they only care about the BOOLEAN flag column they prepend / strip — but
+  // it is worth pinning that arbitrary AttributeType payload columns survive
+  // the flag → strip → unflag round-trip across the engine's value types.
+
+  private def flagRoundTrip(payloadAttr: Attribute, payloadValue: AnyRef): (Boolean, AnyRef) = {
+    val payloadSchema = new Schema(payloadAttr)
+    val flaggedSchema = new Schema(ProgressiveUtils.insertRetractFlagAttr, payloadAttr)
+    val raw = Tuple.builder(payloadSchema).add(payloadAttr, payloadValue).build()
+    val flagged = ProgressiveUtils.addInsertionFlag(raw, flaggedSchema)
+    val (flag, stripped) = ProgressiveUtils.getTupleFlagAndValue(flagged)
+    (flag, stripped.getField[AnyRef](payloadAttr.getName))
+  }
+
+  "Flag round-trip" should "preserve INTEGER payload values" in {
+    val (flag, value) =
+      flagRoundTrip(new Attribute("v", AttributeType.INTEGER), Int.box(42))
+    assert(flag)
+    assert(value == Int.box(42))
+  }
+
+  it should "preserve LONG payload values" in {
+    val (flag, value) =
+      flagRoundTrip(new Attribute("v", AttributeType.LONG), Long.box(9876543210L))
+    assert(flag)
+    assert(value == Long.box(9876543210L))
+  }
+
+  it should "preserve DOUBLE payload values" in {
+    val (flag, value) =
+      flagRoundTrip(new Attribute("v", AttributeType.DOUBLE), Double.box(3.14159))
+    assert(flag)
+    assert(value == Double.box(3.14159))
+  }
+
+  it should "preserve BOOLEAN payload values (distinct from the flag column)" in {
+    // The flag column is also BOOLEAN; this verifies the implementation
+    // selects the correct attribute by name, not by type.
+    val (flag, value) =
+      flagRoundTrip(new Attribute("active", AttributeType.BOOLEAN), Boolean.box(false))
+    assert(flag, "outer flag must still be insertion")
+    assert(value == Boolean.box(false), "inner BOOLEAN payload must be preserved")
+  }
+
+  it should "preserve TIMESTAMP payload values" in {
+    val ts = new java.sql.Timestamp(1_700_000_000_000L)
+    val (flag, value) =
+      flagRoundTrip(new Attribute("ts", AttributeType.TIMESTAMP), ts)
+    assert(flag)
+    assert(value == ts)
+  }
+
+  it should "preserve BINARY payload values" in {
+    val bytes = Array[Byte](0, 1, 2, 3, -1)
+    val (flag, value) =
+      flagRoundTrip(new Attribute("blob", AttributeType.BINARY), bytes)
+    assert(flag)
+    // Tuple stores the same array reference through the round-trip (no copy
+    // semantics in the flag/strip path), so reference equality is the
+    // observable contract here.
+    assert(value.asInstanceOf[Array[Byte]] eq bytes)
+  }
+
+  it should "preserve null payload values across all types" in {
+    Seq(
+      new Attribute("v_int", AttributeType.INTEGER),
+      new Attribute("v_str", AttributeType.STRING),
+      new Attribute("v_dbl", AttributeType.DOUBLE),
+      new Attribute("v_bool", AttributeType.BOOLEAN),
+      new Attribute("v_ts", AttributeType.TIMESTAMP)
+    ).foreach { attr =>
+      val (flag, value) = flagRoundTrip(attr, null)
+      assert(flag)
+      assert(value == null, s"null payload must survive round-trip for ${attr.getType}")
+    }
+  }
 }
