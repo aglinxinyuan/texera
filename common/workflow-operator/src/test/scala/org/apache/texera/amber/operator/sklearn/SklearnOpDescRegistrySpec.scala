@@ -161,13 +161,7 @@ class SklearnOpDescRegistrySpec extends AnyFlatSpec {
       }
   }
 
-  "SklearnClassifierOpDesc base class" should "default to empty strings before subclass overrides" in {
-    val anonymous = new SklearnClassifierOpDesc {}
-    assert(anonymous.getImportStatements == "")
-    assert(anonymous.getUserFriendlyModelName == "")
-  }
-
-  it should "embed the import statement into generatePythonCode for a concrete subclass" in {
+  "SklearnClassifierOpDesc" should "embed the import statement into generatePythonCode for a concrete subclass" in {
     val desc = new SklearnLogisticRegressionOpDesc()
     desc.target = "y"
     desc.countVectorizer = false
@@ -177,6 +171,14 @@ class SklearnOpDescRegistrySpec extends AnyFlatSpec {
     // Classifier OpDescs emit a UDFTableOperator pipeline.
     assert(code.contains("ProcessTableOperator"))
   }
+  // NOTE: the abstract base class's empty-string defaults are NOT tested here.
+  // Instantiating `SklearnClassifierOpDesc` from this spec (e.g. via
+  // `new SklearnClassifierOpDesc {}`) creates an anonymous test-package class
+  // under `org.apache.texera.amber.operator.sklearn`, which the
+  // PythonCodeRawInvalidTextSpec classpath scan then picks up as a descriptor
+  // candidate and fails on (anonymous classes have no accessible no-arg
+  // constructor). Every concrete subclass below overrides both methods, so
+  // the base default is never observable in production anyway.
 
   // ---------------------------------------------------------------------------
   // Training registry (26 concrete SklearnTrainingOpDesc subclasses)
