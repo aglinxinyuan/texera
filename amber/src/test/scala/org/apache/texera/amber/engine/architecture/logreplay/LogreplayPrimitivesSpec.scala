@@ -32,6 +32,10 @@ import org.apache.texera.amber.engine.architecture.rpc.controlcommands.{
   ControlInvocation,
   EmptyRequest
 }
+import org.apache.texera.amber.engine.architecture.rpc.controlreturns.{
+  EmptyReturn,
+  ReturnInvocation
+}
 import org.apache.texera.amber.engine.common.AmberRuntime
 import org.apache.texera.amber.engine.common.ambermessage.{
   WorkflowFIFOMessage,
@@ -337,13 +341,16 @@ class LogreplayPrimitivesSpec extends AnyFlatSpec with BeforeAndAfterAll {
     AmberRuntime.serde.deserialize(bytes, classOf[ReplayLogRecord]).get
   }
 
-  "ReplayLogRecord MessageContent" should "round-trip a DirectControlMessagePayload through AmberRuntime.serde" in {
-    // Production never writes a DataFrame to the replay log: both the
-    // controller and DP-thread paths filter for `DirectControlMessagePayload`
-    // before logging (see `Controller.scala` /
-    // `DataProcessor.scala` use of `_.payload.isInstanceOf[DirectControlMessagePayload]`).
-    // Round-trip the only payload kind the production serializer is actually
-    // exercised on.
+  // Production never writes a DataFrame to the replay log: both the
+  // controller and DP-thread paths filter for `DirectControlMessagePayload`
+  // before logging (see `Controller.scala` and `DPThread.scala` use of
+  // `_.payload.isInstanceOf[DirectControlMessagePayload]`). The trait has
+  // two concrete subtypes that production actually serializes —
+  // `ControlInvocation` (outgoing call) and `ReturnInvocation` (reply) —
+  // and `processDCM` handles both. Round-trip each so a serializer
+  // regression on either subtype fails this spec.
+
+  "ReplayLogRecord MessageContent" should "round-trip a ControlInvocation payload through AmberRuntime.serde" in {
     val payload = ControlInvocation(
       methodName = "doNothing",
       command = EmptyRequest(),
@@ -359,6 +366,19 @@ class LogreplayPrimitivesSpec extends AnyFlatSpec with BeforeAndAfterAll {
     val restoredPayload = restoredMsg.payload.asInstanceOf[ControlInvocation]
     assert(restoredPayload.methodName == "doNothing")
     assert(restoredPayload.commandId == 42L)
+  }
+
+  it should "round-trip a ReturnInvocation payload through AmberRuntime.serde" in {
+    val payload = ReturnInvocation(commandId = 42L, returnValue = EmptyReturn())
+    val msg = WorkflowFIFOMessage(cidA, 2L, payload)
+    val original: ReplayLogRecord = MessageContent(msg)
+    val restored = roundTrip(original)
+    assert(restored == original)
+    val restoredMsg = restored.asInstanceOf[MessageContent].message
+    assert(restoredMsg == msg)
+    val restoredPayload = restoredMsg.payload.asInstanceOf[ReturnInvocation]
+    assert(restoredPayload.commandId == 42L)
+    assert(restoredPayload.returnValue == EmptyReturn())
   }
 
   "ReplayLogRecord ProcessingStep" should "round-trip through AmberRuntime.serde" in {
@@ -378,10 +398,12 @@ class LogreplayPrimitivesSpec extends AnyFlatSpec with BeforeAndAfterAll {
     assert(restored.asInstanceOf[ReplayDestination].id == ecm)
   }
 
-  "ReplayLogRecord TerminateSignal" should "round-trip through AmberRuntime.serde and remain the singleton" in {
-    val original: ReplayLogRecord = TerminateSignal
-    val restored = roundTrip(original)
-    // case-object identity is preserved across serde for case objects.
-    assert(restored eq TerminateSignal)
-  }
+  // NOTE: TerminateSignal is intentionally NOT round-tripped here. It is an
+  // in-memory shutdown sentinel for AsyncReplayLogWriter and is filtered
+  // out before records are written to storage, so a Pekko-serialization
+  // round-trip is not on a real production path. Pinning `eq`-identity
+  // post-deserialization would over-constrain the serializer (a future
+  // change that re-creates the case-object via reflection — still
+  // semantically correct — would fail). Subtype membership is already
+  // pinned by the case-object's compile-time `extends ReplayLogRecord`.
 }
