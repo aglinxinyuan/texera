@@ -189,15 +189,24 @@ class PortIdentitySerdeSpec extends AnyFlatSpec {
     // Documented contract on `GlobalPortIdentitySerde`: "does not include
     // underscore '_' so that it does not interfere with our own VFS URI
     // parsing." The implementation does NOT enforce this — inputs are
-    // interpolated verbatim, so an op-id like
-    // `OperatorIdentity("__DummyOperator")` (which is a real identifier
-    // used in `VirtualIdentityUtils`) produces an underscore-bearing
-    // output. Pin the documented invariant here so that the future fix
-    // that escapes / replaces underscores on the serialize side flips
-    // this from pending to passing, and pendingUntilFixed inverts that
-    // into a deliberate failure forcing the marker to be deleted.
-    val s = globalPort(logical = "__DummyOperator").serializeAsString
-    assert(!s.contains("_"), s"serialized form must be underscore-free: $s")
+    // interpolated verbatim. Both fields can carry underscores in real
+    // production data:
+    // - `logicalOpId`: e.g. `__DummyOperator` from `VirtualIdentityUtils`
+    // - `layerName`: e.g. `${layerName}_source_${portId}_...` constructed
+    //   by `SpecialPhysicalOpFactory`
+    // Cover BOTH so a partial fix that escapes only one of them flips
+    // pendingUntilFixed into a deliberate failure with the second
+    // assertion still red.
+    val withUnderscoreOpId = globalPort(logical = "__DummyOperator").serializeAsString
+    assert(
+      !withUnderscoreOpId.contains("_"),
+      s"serialized form must be underscore-free for op id: $withUnderscoreOpId"
+    )
+    val withUnderscoreLayer = globalPort(layer = "main_source_0_op").serializeAsString
+    assert(
+      !withUnderscoreLayer.contains("_"),
+      s"serialized form must be underscore-free for layer name: $withUnderscoreLayer"
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -275,6 +284,33 @@ class PortIdentitySerdeSpec extends AnyFlatSpec {
     val d = new PortIdentityKeyDeserializer
     intercept[ArrayIndexOutOfBoundsException] {
       d.deserializeKey("5", null)
+    }
+  }
+
+  it should "silently accept extra trailing underscore-separated segments (lenient parser, current behavior)" in {
+    // Pin the current lenient behavior: `parts(0).toInt` and
+    // `parts(1).toBoolean` ignore everything past `parts(1)`, so a key
+    // like `"1_true_garbage"` deserializes to `PortIdentity(1, true)`
+    // without complaint. The strict-rejection variant lives in a
+    // pendingUntilFixed test below; characterizing today's lenient
+    // path here means a future-tightening fix would need to update
+    // both tests deliberately.
+    val d = new PortIdentityKeyDeserializer
+    val pid = d.deserializeKey("1_true_garbage", null)
+    assert(pid == PortIdentity(1, internal = true))
+  }
+
+  it should "eventually reject keys with extra trailing segments (pendingUntilFixed)" in pendingUntilFixed {
+    // Documented contract: a `PortIdentityKeySerializer` output is exactly
+    // `id_internal` — two underscore-separated segments. Anything else is
+    // corrupt JSON and should be rejected, not silently truncated. The
+    // current implementation is lenient (see characterization test
+    // above); this pendingUntilFixed flips to passing once the parser
+    // is hardened, then `pendingUntilFixed` inverts that into a
+    // deliberate failure forcing the marker to be removed.
+    val d = new PortIdentityKeyDeserializer
+    intercept[IllegalArgumentException] {
+      d.deserializeKey("1_true_garbage", null)
     }
   }
 }
