@@ -158,11 +158,11 @@ class LogicalLinkSpec extends AnyFlatSpec {
     assert(link.toPortId == PortIdentity(1))
   }
 
-  it should "use the documented `fromOpId` / `toOpId` JSON field names on serialization" in {
-    // The `@JsonProperty` annotations pin the on-the-wire key names, which
-    // saved workflow files depend on. A renamed Scala field would
-    // silently break a project's existing JSON if these annotations were
-    // removed.
+  it should "emit `fromOpId` / `toOpId` JSON keys pinned by @JsonProperty annotations" in {
+    // Only `fromOpId` / `toOpId` carry `@JsonProperty` in `LogicalLink`;
+    // a Scala-side rename of either parameter would still keep the
+    // JSON key stable, which is the saved-workflow contract these
+    // annotations pin.
     val link = LogicalLink(
       OperatorIdentity("op-A"),
       PortIdentity(0),
@@ -172,6 +172,21 @@ class LogicalLinkSpec extends AnyFlatSpec {
     val tree = objectMapper.valueToTree[JsonNode](link)
     assert(tree.has("fromOpId"))
     assert(tree.has("toOpId"))
+  }
+
+  it should "emit `fromPortId` / `toPortId` JSON keys derived from Scala parameter names (no @JsonProperty)" in {
+    // Pin: the port-id JSON keys come from Scala parameter names since
+    // there is no `@JsonProperty` annotation on those fields. A
+    // parameter rename WOULD silently break saved-workflow compatibility
+    // for these keys — pin so a future rename without an accompanying
+    // `@JsonProperty` annotation breaks this on purpose.
+    val link = LogicalLink(
+      OperatorIdentity("op-A"),
+      PortIdentity(0),
+      OperatorIdentity("op-B"),
+      PortIdentity(1)
+    )
+    val tree = objectMapper.valueToTree[JsonNode](link)
     assert(tree.has("fromPortId"))
     assert(tree.has("toPortId"))
   }
