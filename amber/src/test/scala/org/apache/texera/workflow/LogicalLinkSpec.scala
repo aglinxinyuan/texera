@@ -19,8 +19,8 @@
 
 package org.apache.texera.workflow
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.exc.MismatchedInputException
-import com.fasterxml.jackson.databind.node.ObjectNode
 import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
 import org.apache.texera.amber.core.workflow.PortIdentity
 import org.apache.texera.amber.util.JSONUtils.objectMapper
@@ -148,9 +148,9 @@ class LogicalLinkSpec extends AnyFlatSpec {
     // constructor.
     val node = objectMapper.createObjectNode()
     node.put("fromOpId", "op-A")
-    node.set[ObjectNode]("fromPortId", objectMapper.valueToTree(PortIdentity(0)))
+    node.set("fromPortId", objectMapper.valueToTree[JsonNode](PortIdentity(0)))
     node.put("toOpId", "op-B")
-    node.set[ObjectNode]("toPortId", objectMapper.valueToTree(PortIdentity(1)))
+    node.set("toPortId", objectMapper.valueToTree[JsonNode](PortIdentity(1)))
     val link = objectMapper.treeToValue(node, classOf[LogicalLink])
     assert(link.fromOpId == OperatorIdentity("op-A"))
     assert(link.toOpId == OperatorIdentity("op-B"))
@@ -169,7 +169,7 @@ class LogicalLinkSpec extends AnyFlatSpec {
       OperatorIdentity("op-B"),
       PortIdentity(1)
     )
-    val tree = objectMapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](link)
+    val tree = objectMapper.valueToTree[JsonNode](link)
     assert(tree.has("fromOpId"))
     assert(tree.has("toOpId"))
     assert(tree.has("fromPortId"))
@@ -193,10 +193,14 @@ class LogicalLinkSpec extends AnyFlatSpec {
       PortIdentity(1)
     )
     val json = objectMapper.writeValueAsString(original)
-    // Confirm writeValueAsString emits the object form.
-    assert(json.contains("\"fromOpId\":{\"id\":\"op-A\"}"))
-    // Re-reading fails because the @JsonCreator string overload can't
-    // accept an object for fromOpId.
+    // Parse the emitted JSON and confirm the structural shape — fromOpId
+    // is an object with an `id` field of "op-A". Avoids depending on
+    // exact key ordering or escaping.
+    val tree = objectMapper.readTree(json)
+    assert(tree.path("fromOpId").isObject, s"expected fromOpId to be an object: $json")
+    assert(tree.path("fromOpId").path("id").asText() == "op-A")
+    // Re-reading the just-emitted JSON fails because the @JsonCreator
+    // String overload can't accept the object-shape fromOpId.
     intercept[MismatchedInputException] {
       objectMapper.readValue(json, classOf[LogicalLink])
     }
@@ -210,8 +214,8 @@ class LogicalLinkSpec extends AnyFlatSpec {
     // time should fail this on purpose.
     val empty = objectMapper.createObjectNode()
     val link = objectMapper.treeToValue(empty, classOf[LogicalLink])
-    assert(link.fromOpId == OperatorIdentity(null.asInstanceOf[String]))
-    assert(link.toOpId == OperatorIdentity(null.asInstanceOf[String]))
+    assert(link.fromOpId.id == null)
+    assert(link.toOpId.id == null)
     // PortIdentity fields default to null too (the @JsonCreator does not
     // supply scalapb defaults for missing object fields — Jackson passes
     // null for the typed PortIdentity arg).
