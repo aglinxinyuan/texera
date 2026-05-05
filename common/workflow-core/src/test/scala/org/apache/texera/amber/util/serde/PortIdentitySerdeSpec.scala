@@ -19,11 +19,9 @@
 
 package org.apache.texera.amber.util.serde
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.texera.amber.core.virtualidentity.{OperatorIdentity, PhysicalOpIdentity}
 import org.apache.texera.amber.core.workflow.{GlobalPortIdentity, PortIdentity}
+import org.apache.texera.amber.util.JSONUtils.objectMapper
 import org.apache.texera.amber.util.serde.GlobalPortIdentitySerde.SerdeOps
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -173,13 +171,32 @@ class PortIdentitySerdeSpec extends AnyFlatSpec {
     }
   }
 
-  it should "produce a string with no underscore (compatibility with VFS URI parsing)" in {
-    // The custom format exists specifically to avoid the underscore separator
-    // used by `PortIdentityKeySerializer.portIdToString`, which would clash
-    // with the VFS URI parser. Pin the no-underscore invariant for every
-    // field combination — including a layerName containing dashes, which
-    // is the realistic counter-example most likely to slip in.
-    val s = globalPort(logical = "my-op", layer = "extra-layer", internal = true).serializeAsString
+  it should "use no underscore in its own format characters (separators / keys)" in {
+    // Pin the format-character invariant: the wrapping `(...)`, the field
+    // separators `,`, the key=value separators, and the field NAMES
+    // themselves contain no underscore. Verify by building the format with
+    // empty-string-replacement values for every input field, so anything
+    // left in the output is purely from `serializeAsString`'s own format.
+    // (For the layerName field the empty-input variant is rejected by the
+    // deserializer regex; here we only check the SERIALIZED output, not the
+    // round-trip.)
+    val s = globalPort(logical = "x", layer = "x").serializeAsString
+    val formatChars = s.replace("x", "").replace("0", "").replace("false", "").replace("true", "")
+    assert(!formatChars.contains("_"), s"format characters must be underscore-free: $formatChars")
+  }
+
+  it should "eventually produce an underscore-free output even for inputs that contain underscores (pendingUntilFixed)" in pendingUntilFixed {
+    // Documented contract on `GlobalPortIdentitySerde`: "does not include
+    // underscore '_' so that it does not interfere with our own VFS URI
+    // parsing." The implementation does NOT enforce this — inputs are
+    // interpolated verbatim, so an op-id like
+    // `OperatorIdentity("__DummyOperator")` (which is a real identifier
+    // used in `VirtualIdentityUtils`) produces an underscore-bearing
+    // output. Pin the documented invariant here so that the future fix
+    // that escapes / replaces underscores on the serialize side flips
+    // this from pending to passing, and pendingUntilFixed inverts that
+    // into a deliberate failure forcing the marker to be deleted.
+    val s = globalPort(logical = "__DummyOperator").serializeAsString
     assert(!s.contains("_"), s"serialized form must be underscore-free: $s")
   }
 
@@ -196,44 +213,33 @@ class PortIdentitySerdeSpec extends AnyFlatSpec {
   // PortIdentityKeySerializer + PortIdentityKeyDeserializer (Jackson wiring)
   // ---------------------------------------------------------------------------
   //
-  // These tests use a real ObjectMapper with the serde pair registered as a
-  // module — same wiring JSONUtils.objectMapper performs in production —
-  // so a regression in either direction surfaces here.
+  // These tests use the production `JSONUtils.objectMapper` directly so a
+  // regression in the singleton wiring (e.g. the module that registers the
+  // PortIdentity key (de)serializer being removed or reordered) surfaces
+  // here, not just on a freshly-constructed mapper.
 
-  private def newMapper(): ObjectMapper = {
-    val m = new ObjectMapper()
-    m.registerModule(DefaultScalaModule)
-    val mod = new SimpleModule()
-    mod.addKeySerializer(classOf[PortIdentity], new PortIdentityKeySerializer())
-    mod.addKeyDeserializer(classOf[PortIdentity], new PortIdentityKeyDeserializer())
-    m.registerModule(mod)
-    m
-  }
-
-  "PortIdentity Jackson key (de)serialization" should "round-trip a Map[PortIdentity, String] via the registered module" in {
-    val mapper = newMapper()
+  "PortIdentity Jackson key (de)serialization" should "round-trip a Map[PortIdentity, String] via JSONUtils.objectMapper" in {
     val original = Map(
       PortIdentity(0, internal = false) -> "a",
       PortIdentity(1, internal = true) -> "b"
     )
-    val json = mapper.writeValueAsString(original)
+    val json = objectMapper.writeValueAsString(original)
     // Verify the JSON keys match the documented `id_internal` format.
     assert(json.contains("\"0_false\""))
     assert(json.contains("\"1_true\""))
-    val tref = mapper.getTypeFactory
+    val tref = objectMapper.getTypeFactory
       .constructMapType(classOf[java.util.HashMap[_, _]], classOf[PortIdentity], classOf[String])
-    val restored: java.util.Map[PortIdentity, String] = mapper.readValue(json, tref)
+    val restored: java.util.Map[PortIdentity, String] = objectMapper.readValue(json, tref)
     import scala.jdk.CollectionConverters._
     assert(restored.asScala.toMap == original)
   }
 
   it should "round-trip an empty Map[PortIdentity, V] without invoking the (de)serializer" in {
-    val mapper = newMapper()
     val original = Map.empty[PortIdentity, String]
-    val json = mapper.writeValueAsString(original)
-    val tref = mapper.getTypeFactory
+    val json = objectMapper.writeValueAsString(original)
+    val tref = objectMapper.getTypeFactory
       .constructMapType(classOf[java.util.HashMap[_, _]], classOf[PortIdentity], classOf[String])
-    val restored: java.util.Map[PortIdentity, String] = mapper.readValue(json, tref)
+    val restored: java.util.Map[PortIdentity, String] = objectMapper.readValue(json, tref)
     assert(restored.isEmpty)
   }
 
