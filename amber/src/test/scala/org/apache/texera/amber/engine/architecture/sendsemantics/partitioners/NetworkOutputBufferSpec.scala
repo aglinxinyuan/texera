@@ -22,7 +22,7 @@ package org.apache.texera.amber.engine.architecture.sendsemantics.partitioners
 import org.apache.texera.amber.config.ApplicationConfig
 import org.apache.texera.amber.core.state.State
 import org.apache.texera.amber.core.tuple.{Attribute, AttributeType, Schema, Tuple}
-import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, ChannelIdentity}
+import org.apache.texera.amber.core.virtualidentity.ActorVirtualIdentity
 import org.apache.texera.amber.engine.architecture.messaginglayer.NetworkOutputGateway
 import org.apache.texera.amber.engine.common.ambermessage.{
   DataFrame,
@@ -221,16 +221,11 @@ class NetworkOutputBufferSpec extends AnyFlatSpec {
     assert(frames == List(List(tuple(0)), List(tuple(1))))
   }
 
-  "NetworkOutputBuffer with batchSize = 0" should
-    "flush immediately after every addTuple (the `>=` guard fires for any non-empty buffer)" in {
-    // Pin the corner-case behavior: `if (buffer.size >= batchSize)` is
-    // true for size >= 0 = true after any append, so batchSize=0 collapses
-    // to "flush every tuple individually" — same observable as batchSize=1.
-    // A future tightening to `> 0` would break this on purpose.
-    val (buf, cap) = newBuffer(batchSize = 0)
-    buf.addTuple(tuple(42))
-    assert(cap.messages.size == 1)
-    val frame = cap.messages.head.payload.asInstanceOf[DataFrame]
-    assert(frame.frame.toList == List(tuple(42)))
-  }
+  // NOTE: `batchSize <= 0` is not exercised here. The workflow-settings UI
+  // (frontend/.../settings/settings.component.ts) restricts data-transfer
+  // batch size to `>= 1` before it ever reaches `NetworkOutputBuffer`, so
+  // a value of 0 is not reachable from production. Pinning a
+  // characterization for `batchSize = 0` would enshrine an implementation
+  // detail (the `>=` guard) and block a future hardening change that
+  // rejects the invalid value at construction time.
 }
