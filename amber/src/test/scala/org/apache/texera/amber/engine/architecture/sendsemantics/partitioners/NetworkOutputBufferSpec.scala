@@ -221,11 +221,31 @@ class NetworkOutputBufferSpec extends AnyFlatSpec {
     assert(frames == List(List(tuple(0)), List(tuple(1))))
   }
 
-  // NOTE: `batchSize <= 0` is not exercised here. The workflow-settings UI
-  // (frontend/.../settings/settings.component.ts) restricts data-transfer
-  // batch size to `>= 1` before it ever reaches `NetworkOutputBuffer`, so
-  // a value of 0 is not reachable from production. Pinning a
-  // characterization for `batchSize = 0` would enshrine an implementation
-  // detail (the `>=` guard) and block a future hardening change that
-  // rejects the invalid value at construction time.
+  // `batchSize <= 0` IS reachable from production today: the
+  // workflow-settings UI restricts the value to `>= 1`, but
+  // `SyncExecutionResource` accepts `request.workflowSettings` directly
+  // from the API and the backend forwards `workflowSettings
+  // .dataTransferBatchSize` into `NetworkOutputBuffer` without
+  // validating it. A pendingUntilFixed test pins the desired
+  // hardening (rejection at construction) so the future fix flips
+  // pendingUntilFixed into a deliberate failure forcing the marker
+  // to be removed.
+
+  "NetworkOutputBuffer with non-positive batchSize" should
+    "eventually reject construction (pendingUntilFixed)" in pendingUntilFixed {
+    // Today the constructor accepts `batchSize <= 0` and the `>=`
+    // guard then fires after every append (collapsing to per-tuple
+    // flush). The intended contract is that a non-positive batch
+    // size is invalid input and should be rejected at construction
+    // (e.g., `require(batchSize > 0, ...)`). Asserting
+    // `IllegalArgumentException` here flips this from pending to
+    // passing once the hardening lands.
+    val cap = new Capture
+    intercept[IllegalArgumentException] {
+      new NetworkOutputBuffer(receiver, cap.gateway, batchSize = 0)
+    }
+    intercept[IllegalArgumentException] {
+      new NetworkOutputBuffer(receiver, cap.gateway, batchSize = -1)
+    }
+  }
 }
