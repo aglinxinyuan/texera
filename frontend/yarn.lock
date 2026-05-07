@@ -2399,7 +2399,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-textmate-service-override@npm:25.1.2, @codingame/monaco-vscode-textmate-service-override@npm:^25.1.2":
+"@codingame/monaco-vscode-textmate-service-override@npm:^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-textmate-service-override@npm:25.1.2"
   dependencies:
@@ -10979,7 +10979,6 @@ __metadata:
     "@codingame/monaco-vscode-java-default-extension": "npm:25.1.2"
     "@codingame/monaco-vscode-python-default-extension": "npm:25.1.2"
     "@codingame/monaco-vscode-r-default-extension": "npm:25.1.2"
-    "@codingame/monaco-vscode-textmate-service-override": "npm:25.1.2"
     "@codingame/monaco-vscode-theme-defaults-default-extension": "npm:25.1.2"
     "@ngneat/until-destroy": "npm:8.1.4"
     "@ngx-formly/core": "npm:6.3.12"
