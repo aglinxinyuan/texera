@@ -2133,7 +2133,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-extension-api@npm:^25.1.2, vscode@npm:@codingame/monaco-vscode-extension-api@25.1.2":
+"@codingame/monaco-vscode-extension-api@npm:^25.1.2, vscode@npm:@codingame/monaco-vscode-extension-api@25.1.2, vscode@npm:@codingame/monaco-vscode-extension-api@^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-extension-api@npm:25.1.2"
   dependencies:

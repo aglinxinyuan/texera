@@ -80,7 +80,6 @@
     "zone.js": "0.15.1"
   },
   "resolutions": {
-    "vscode": "npm:@codingame/monaco-vscode-extension-api@25.1.2",
     "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@25.1.2",
     "webpack": "5.104.1",
     "jschardet": "portal:./tools/jschardet-stub"
