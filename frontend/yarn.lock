@@ -2133,7 +2133,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-extension-api@npm:^25.1.2, vscode@npm:@codingame/monaco-vscode-extension-api@25.1.2, vscode@npm:@codingame/monaco-vscode-extension-api@^25.1.2":
+"@codingame/monaco-vscode-extension-api@npm:^25.1.2, vscode@npm:@codingame/monaco-vscode-extension-api@^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-extension-api@npm:25.1.2"
   dependencies:
@@ -11040,7 +11040,6 @@ __metadata:
     typescript: "npm:5.9.3"
     uuid: "npm:8.3.2"
     vitest: "npm:4.0.8"
-    vscode: "npm:@codingame/monaco-vscode-extension-api@25.1.2"
     y-monaco: "npm:0.1.5"
     y-protocols: "npm:1.0.5"
     y-quill: "npm:0.1.5"
