@@ -40,15 +40,27 @@
  * of Vite's transform pipeline. Without the hook, every spec that transitively
  * loads the codingame v25 stack crashes with `Unknown file extension ".css"`.
  *
- * Done at the very top of this file so the registration happens before any
+ * The hook source lives inline as a `data:` URL — `module.register` accepts
+ * any module URL, and a data URL avoids carrying a separate `.mjs` sidecar
+ * file. Done at the top of this file so the registration runs before any
  * spec body imports the affected packages. `module.register` requires Node
  * 20.6+; the project already mandates Node >= 24.
  */
 import { register as registerLoader } from "node:module";
-import { pathToFileURL } from "node:url";
-import * as nodePath from "node:path";
 
-registerLoader(pathToFileURL(nodePath.join(__dirname, "jsdom-css-loader-hook.mjs")));
+const cssLoaderHookSource = `
+export function resolve(specifier, context, nextResolve) {
+  if (specifier.endsWith(".css") || /\\.css(\\?|$)/.test(specifier)) {
+    return {
+      url: "data:text/javascript,export%20default%20%7B%7D%3B",
+      shortCircuit: true,
+      format: "module",
+    };
+  }
+  return nextResolve(specifier, context);
+}
+`;
+registerLoader(`data:text/javascript;charset=utf-8,${encodeURIComponent(cssLoaderHookSource)}`);
 
 type AnyFn = (...args: unknown[]) => unknown;
 
