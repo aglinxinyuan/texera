@@ -41,11 +41,17 @@ import { YType } from "../../types/shared-editing.interface";
 import { FormControl } from "@angular/forms";
 import { AIAssistantService, TypeAnnotationResponse } from "../../service/ai-assistant/ai-assistant.service";
 import { AnnotationSuggestionComponent } from "./annotation-suggestion.component";
-import { MonacoEditorLanguageClientWrapper, UserConfig } from "monaco-editor-wrapper";
 import * as monaco from "monaco-editor";
-import "@codingame/monaco-vscode-python-default-extension";
-import "@codingame/monaco-vscode-r-default-extension";
-import "@codingame/monaco-vscode-java-default-extension";
+import {
+  MonacoVscodeApiWrapper,
+  type MonacoVscodeApiConfig,
+  getEnhancedMonacoEnvironment,
+} from "monaco-languageclient/vscodeApiWrapper";
+import { LanguageClientWrapper, type LanguageClientConfig } from "monaco-languageclient/lcwrapper";
+import { EditorApp, type EditorAppConfig } from "monaco-languageclient/editorApp";
+// NOTE: the @codingame/monaco-vscode-*-default-extension packages are imported
+// dynamically inside `ensureVscodeApiStarted` below — see the comment there for
+// why static side-effect imports get tree-shaken in this project's build pipeline.
 import { isDefined } from "../../../common/util/predicate";
 import { filter, switchMap } from "rxjs/operators";
 import { BreakpointConditionInputComponent } from "./breakpoint-condition-input/breakpoint-condition-input.component";
@@ -105,7 +111,10 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
   public language: string = "";
   public languageTitle: string = "";
 
-  private editorWrapper: MonacoEditorLanguageClientWrapper = new MonacoEditorLanguageClientWrapper();
+  private static apiWrapperStarted = false;
+  private static apiWrapperStartPromise?: Promise<void>;
+  private editorApp?: EditorApp;
+  private languageClientWrapper?: LanguageClientWrapper;
   private monacoBinding?: MonacoBinding;
 
   // Boolean to determine whether the suggestion UI should be shown
@@ -191,7 +200,10 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
       this.monacoBinding.destroy();
     }
 
-    this.editorWrapper.dispose(true);
+    this.languageClientWrapper?.dispose().catch(() => {});
+    this.languageClientWrapper = undefined;
+    this.editorApp?.dispose().catch(() => {});
+    this.editorApp = undefined;
 
     if (isDefined(this.workflowVersionStreamSubject)) {
       this.workflowVersionStreamSubject.next();
@@ -229,52 +241,129 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
   }
 
   /**
+   * Lazily start the global monaco-vscode-api wrapper. The vscode API services are
+   * a process-wide singleton in v10; calling start() twice would throw, so we share
+   * a single Promise across every CodeEditorComponent instance.
+   */
+  private static ensureVscodeApiStarted(): Promise<void> {
+    if (CodeEditorComponent.apiWrapperStarted) {
+      return Promise.resolve();
+    }
+    if (!CodeEditorComponent.apiWrapperStartPromise) {
+      const apiConfig: MonacoVscodeApiConfig = {
+        $type: "extended",
+        viewsConfig: { $type: "EditorService" },
+        userConfiguration: {
+          json: JSON.stringify({
+            "workbench.colorTheme": "Default Dark Modern",
+          }),
+        },
+        // Wire up the workers monaco-vscode-api spawns at runtime (editor,
+        // extension host, textmate). The package's `configureDefaultWorkerFactory`
+        // tries to load worker scripts straight out of the codingame node_modules
+        // tree via `new URL('@codingame/...', import.meta.url)`, but webpack only
+        // emits that URL as a static asset — the worker's transitive imports are
+        // never bundled, so the worker 404s on its first relative import at
+        // runtime. Instead we use the literal `new Worker(new URL('./local.ts',
+        // import.meta.url))` pattern that webpack 5 recognizes as a worker entry
+        // point; the trampoline files in `./workers/` re-export the codingame
+        // worker source and pull the whole dep tree into the bundle.
+        monacoWorkerFactory: () => {
+          const env = getEnhancedMonacoEnvironment();
+          env.getWorker = (_workerId: string, label: string): Worker => {
+            switch (label) {
+              case "editorWorkerService":
+                return new Worker(new URL("./workers/editor.worker", import.meta.url), { type: "module" });
+              case "extensionHostWorkerMain":
+                return new Worker(new URL("./workers/extension-host.worker", import.meta.url), { type: "module" });
+              case "TextMateWorker":
+                return new Worker(new URL("./workers/textmate.worker", import.meta.url), { type: "module" });
+              default:
+                throw new Error(`No worker configured for label: ${label}`);
+            }
+          };
+        },
+      };
+      const apiWrapper = new MonacoVscodeApiWrapper(apiConfig);
+      // Start the vscode-api FIRST, then load AND fully activate the default
+      // language extensions before resolving. Each extension's module exports a
+      // `whenReady()` that resolves after its TextMate grammar / configuration
+      // files are registered with the host — without waiting for it, the editor
+      // opens with the language detected as Python but every token rendered as
+      // the default `mtk1` class (no syntax colours).
+      //
+      // Dynamic `import(...)` (rather than top-level `import "@codingame/..."`)
+      // is required because Angular's `@angular/build:application` pipeline
+      // tree-shakes bare side-effect imports out of the dev bundle.
+      CodeEditorComponent.apiWrapperStartPromise = apiWrapper
+        .start()
+        .then(() =>
+          Promise.all([
+            import("@codingame/monaco-vscode-python-default-extension"),
+            import("@codingame/monaco-vscode-r-default-extension"),
+            import("@codingame/monaco-vscode-java-default-extension"),
+            import("@codingame/monaco-vscode-theme-defaults-default-extension"),
+          ])
+        )
+        .then(extensions => Promise.all(extensions.map(ext => ext.whenReady?.())))
+        .then(() => {
+          CodeEditorComponent.apiWrapperStarted = true;
+        });
+    }
+    return CodeEditorComponent.apiWrapperStartPromise;
+  }
+
+  /**
    * Create a Monaco editor and connect it to MonacoBinding.
    * @private
    */
   private initializeMonacoEditor() {
     const fileSuffix = this.getFileSuffixByLanguage(this.language);
-    const userConfig: UserConfig = {
-      wrapperConfig: {
-        editorAppConfig: {
-          $type: "extended",
-          codeResources: {
-            main: {
-              text: this.code?.toString() ?? "",
-              uri: `in-memory-${this.currentOperatorId}.${fileSuffix}`,
-            },
-          },
-          userConfiguration: {
-            json: JSON.stringify({
-              "workbench.colorTheme": "Default Dark Modern",
-            }),
-          },
+    const editorAppConfig: EditorAppConfig = {
+      codeResources: {
+        modified: {
+          text: this.code?.toString() ?? "",
+          uri: `in-memory-${this.currentOperatorId}${fileSuffix}`,
         },
       },
     };
 
-    // optionally, configure python language client.
-    // it may fail if no valid connection is established, yet the failure would be ignored.
     const languageServerWebsocketUrl = getWebsocketUrl(
       "/python-language-server",
       this.config.env.pythonLanguageServerPort
     );
-    if (this.language === "python") {
-      userConfig.languageClientConfig = {
-        languageId: this.language,
-        options: {
-          $type: "WebSocketUrl",
-          url: languageServerWebsocketUrl,
-        },
-      };
-    }
 
-    // init monaco editor, optionally with attempt on language client.
-    from(this.editorWrapper.initAndStart(userConfig, this.editorElement.nativeElement))
+    const startEditor = async (): Promise<MonacoEditor | undefined> => {
+      await CodeEditorComponent.ensureVscodeApiStarted();
+      this.editorApp = new EditorApp(editorAppConfig);
+      await this.editorApp.start(this.editorElement.nativeElement);
+
+      // optionally, configure python language client.
+      // it may fail if no valid connection is established, yet the failure would be ignored.
+      if (this.language === "python") {
+        const lcConfig: LanguageClientConfig = {
+          languageId: this.language,
+          connection: {
+            options: {
+              $type: "WebSocketUrl",
+              url: languageServerWebsocketUrl,
+            },
+          },
+          clientOptions: {
+            documentSelector: [this.language],
+          },
+        };
+        this.languageClientWrapper = new LanguageClientWrapper(lcConfig);
+        await this.languageClientWrapper.start();
+      }
+      return this.editorApp.getEditor();
+    };
+
+    from(startEditor())
       .pipe(
         timeout(LANGUAGE_SERVER_CONNECTION_TIMEOUT_MS),
-        switchMap(() => of(this.editorWrapper.getEditor())),
-        catchError(() => of(this.editorWrapper.getEditor())),
+        switchMap(editor => of(editor ?? this.editorApp?.getEditor())),
+        catchError(() => of(this.editorApp?.getEditor())),
         filter(isDefined),
         untilDestroyed(this)
       )
@@ -292,6 +381,22 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
           new Set([editor]),
           this.workflowActionService.getTexeraGraph().getSharedModelAwareness()
         );
+        // The TextMate grammar registers asynchronously (the host fetches the
+        // .tmLanguage.json from the codingame extension and spins up a worker).
+        // Even after the editor mounts, the model may have already been painted
+        // with the no-grammar tokens (everything as the default `mtk1` class).
+        // Force a re-tokenize so the syntax colours show up on first paint.
+        const model = editor.getModel();
+        const tokenization = (
+          model as unknown as {
+            tokenization?: { forceTokenization?: (line: number) => void };
+          }
+        )?.tokenization;
+        if (model && tokenization?.forceTokenization) {
+          for (let line = 1; line <= model.getLineCount(); line++) {
+            tokenization.forceTokenization(line);
+          }
+        }
         this.setupAIAssistantActions(editor);
         this.initCodeDebuggerComponent(editor);
       });
@@ -304,34 +409,31 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
       ?.content.operators?.find(({ operatorID }) => operatorID === this.currentOperatorId);
     const latestVersionCode: string = latestVersionOperator?.operatorProperties?.code ?? "";
     const oldVersionCode: string = this.code?.toString() ?? "";
-    const userConfig: UserConfig = {
-      wrapperConfig: {
-        editorAppConfig: {
-          $type: "extended",
-          codeResources: {
-            main: {
-              text: latestVersionCode,
-              uri: `in-memory-${this.currentOperatorId}.${fileSuffix}`,
-            },
-            original: {
-              text: oldVersionCode,
-              uri: `in-memory-${this.currentOperatorId}-version.${fileSuffix}`,
-            },
-          },
-          useDiffEditor: true,
-          diffEditorOptions: {
-            readOnly: true,
-          },
-          userConfiguration: {
-            json: JSON.stringify({
-              "workbench.colorTheme": "Default Dark Modern",
-            }),
-          },
+    const editorAppConfig: EditorAppConfig = {
+      codeResources: {
+        modified: {
+          text: latestVersionCode,
+          uri: `in-memory-${this.currentOperatorId}${fileSuffix}`,
         },
+        original: {
+          text: oldVersionCode,
+          uri: `in-memory-${this.currentOperatorId}-version${fileSuffix}`,
+        },
+      },
+      useDiffEditor: true,
+      diffEditorOptions: {
+        readOnly: true,
       },
     };
 
-    this.editorWrapper.initAndStart(userConfig, this.editorElement.nativeElement);
+    from(
+      CodeEditorComponent.ensureVscodeApiStarted().then(() => {
+        this.editorApp = new EditorApp(editorAppConfig);
+        return this.editorApp.start(this.editorElement.nativeElement);
+      })
+    )
+      .pipe(untilDestroyed(this))
+      .subscribe();
   }
 
   private initCodeDebuggerComponent(editor: MonacoEditor) {
@@ -514,7 +616,7 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
         this.currentRange.endColumn
       );
 
-      this.insertTypeAnnotations(this.editorWrapper.getEditor()!, selection, this.currentSuggestion);
+      this.insertTypeAnnotations(this.editorApp!.getEditor()!, selection, this.currentSuggestion);
 
       // Only for "Add All Type Annotation"
       if (this.isMultipleVariables && this.userResponseSubject) {
@@ -562,7 +664,7 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
     if (rect.bottom > viewportHeight) {
       container.style.height = `${viewportHeight - rect.top}px`;
     }
-    this.editorWrapper.getEditor()?.layout();
+    this.editorApp?.getEditor()?.layout();
   }
   onFocus() {
     this.workflowActionService.getJointGraphWrapper().highlightOperators(this.currentOperatorId);

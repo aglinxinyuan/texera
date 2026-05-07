@@ -29,17 +29,13 @@ export default defineConfig({
     // which Angular's `fakeAsync` requires. Karma+Jasmine installed this
     // implicitly; the @angular/build:unit-test path doesn't.
     setupFiles: ["src/test-zone-setup.ts"],
-    // monaco-breakpoints' entry does `import './style.css'`. By default
-    // Vitest leaves third-party deps externalized, so Node's ESM loader
-    // tries to import the .css and crashes with
-    // `TypeError: Unknown file extension ".css"`. Inlining the package
-    // routes its imports through Vite/esbuild, which rewrites the CSS
-    // import to a no-op.
-    server: {
-      deps: {
-        inline: [/monaco-breakpoints/],
-      },
-    },
+    // CSS imports inside transitive deps (monaco-breakpoints, monaco-editor,
+    // @codingame/monaco-vscode-*, …) are stripped by a Node ESM loader hook
+    // registered at the top of `src/jsdom-svg-polyfill.ts` rather than via
+    // `server.deps.inline`. The `@angular/build:unit-test` builder pre-bundles
+    // specs with `externalPackages: true`, so transitive imports go through
+    // Node's native loader and bypass Vitest's inline transform — see the
+    // comment in that file for the full rationale.
     // Per-spec exclusions live in `angular.json` (the unit-test builder
     // applies them at the discovery stage, before Vitest's own filter,
     // which is what the Vitest team recommends — see the Vite warning

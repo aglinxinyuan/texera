@@ -32,6 +32,24 @@
  * jointjs to instantiate cleanly.
  */
 
+/**
+ * Register a Node ESM loader hook so every transitive `.css` import resolves
+ * to an empty module. Required because the Angular `@angular/build:unit-test`
+ * builder pre-bundles spec files with `externalPackages: true`, which means
+ * imports like `monaco-languageclient` reach Node's native ESM loader instead
+ * of Vite's transform pipeline. Without the hook, every spec that transitively
+ * loads the codingame v25 stack crashes with `Unknown file extension ".css"`.
+ *
+ * Done at the very top of this file so the registration happens before any
+ * spec body imports the affected packages. `module.register` requires Node
+ * 20.6+; the project already mandates Node >= 24.
+ */
+import { register as registerLoader } from "node:module";
+import { pathToFileURL } from "node:url";
+import * as nodePath from "node:path";
+
+registerLoader(pathToFileURL(nodePath.join(__dirname, "jsdom-css-loader-hook.mjs")));
+
 type AnyFn = (...args: unknown[]) => unknown;
 
 function fakeMatrix() {
@@ -93,6 +111,106 @@ if (SVG_ELEMENT_GLOBAL?.prototype) {
   if (typeof proto.getScreenCTM !== "function") proto.getScreenCTM = fakeMatrix as AnyFn;
   if (typeof proto.getCTM !== "function") proto.getCTM = fakeMatrix as AnyFn;
   if (typeof proto.getBBox !== "function") proto.getBBox = fakeRect as AnyFn;
+}
+
+/**
+ * jsdom doesn't implement the Constructable Stylesheets API
+ * (`new CSSStyleSheet().replaceSync(...)`), which @codingame/monaco-vscode-api
+ * v25's `css.js` runtime calls when registering CSS at module load time.
+ * Without it, every spec that transitively imports monaco-languageclient
+ * crashes at construction.
+ *
+ * Stub `CSSStyleSheet` with an inert constructor whose `replaceSync` is a
+ * no-op. Specs don't visually render anything, so swallowing CSS is safe.
+ */
+const CSS_GLOBAL = (globalThis as unknown as { CSSStyleSheet?: { prototype: Record<string, AnyFn> } }).CSSStyleSheet;
+if (!CSS_GLOBAL) {
+  class InertCSSStyleSheet {
+    cssRules: unknown[] = [];
+    replaceSync(): void {}
+    replace(): Promise<void> {
+      return Promise.resolve();
+    }
+    insertRule(): number {
+      return 0;
+    }
+    deleteRule(): void {}
+  }
+  (globalThis as unknown as { CSSStyleSheet: typeof InertCSSStyleSheet }).CSSStyleSheet = InertCSSStyleSheet;
+} else if (typeof CSS_GLOBAL.prototype.replaceSync !== "function") {
+  CSS_GLOBAL.prototype.replaceSync = (() => undefined) as AnyFn;
+  if (typeof CSS_GLOBAL.prototype.replace !== "function") {
+    CSS_GLOBAL.prototype.replace = (() => Promise.resolve()) as AnyFn;
+  }
+}
+
+/**
+ * jsdom's Document doesn't expose `adoptedStyleSheets` (it's a Constructable
+ * Stylesheets feature). The codingame runtime pushes new sheets onto it.
+ */
+const docProtoForCss = (globalThis as unknown as { Document?: { prototype: Record<string, unknown> } }).Document
+  ?.prototype;
+if (docProtoForCss && !("adoptedStyleSheets" in docProtoForCss)) {
+  Object.defineProperty(docProtoForCss, "adoptedStyleSheets", {
+    configurable: true,
+    get() {
+      return (this as { __adoptedStyleSheets?: unknown[] }).__adoptedStyleSheets ?? [];
+    },
+    set(v: unknown[]) {
+      (this as { __adoptedStyleSheets?: unknown[] }).__adoptedStyleSheets = v;
+    },
+  });
+}
+
+/**
+ * jsdom doesn't implement the `CSS` global namespace (`CSS.escape`,
+ * `CSS.supports`). The codingame v25 theme service calls `CSS.escape(...)` to
+ * sanitize icon class names. Without it, an idle-callback runner crashes the
+ * worker with `TypeError: Cannot read properties of undefined (reading 'escape')`.
+ *
+ * Provide a minimal stub. The escape implementation mirrors the spec —
+ * https://drafts.csswg.org/cssom/#serialize-an-identifier — but we only need
+ * to handle the conservative case so `value === out` as often as possible
+ * (otherwise a noisy `console.warn` fires every paint).
+ */
+const cssGlobal = globalThis as unknown as { CSS?: { escape?: (value: string) => string; supports?: AnyFn } };
+if (!cssGlobal.CSS) {
+  cssGlobal.CSS = {};
+}
+if (typeof cssGlobal.CSS.escape !== "function") {
+  cssGlobal.CSS.escape = (value: string) => String(value).replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~]/g, "\\$&");
+}
+if (typeof cssGlobal.CSS.supports !== "function") {
+  cssGlobal.CSS.supports = (() => false) as AnyFn;
+}
+
+/**
+ * jsdom doesn't implement `window.matchMedia` (the CSS media query API).
+ * The codingame v25 theme service calls it during a deferred idle callback
+ * to detect dark/light preference, and jsdom raises
+ * `TypeError: targetWindow.matchMedia is not a function`.
+ *
+ * Stub with an inert MediaQueryList that always reports no match.
+ */
+const winForMatchMedia = globalThis as unknown as {
+  matchMedia?: AnyFn;
+  window?: { matchMedia?: AnyFn };
+};
+const matchMediaStub: AnyFn = ((query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: () => undefined,
+  removeListener: () => undefined,
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+  dispatchEvent: () => false,
+})) as AnyFn;
+if (typeof winForMatchMedia.matchMedia !== "function") {
+  winForMatchMedia.matchMedia = matchMediaStub;
+}
+if (winForMatchMedia.window && typeof winForMatchMedia.window.matchMedia !== "function") {
+  winForMatchMedia.window.matchMedia = matchMediaStub;
 }
 
 /**
@@ -185,9 +303,16 @@ class InertWebSocket {
  */
 function isBenignIconError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack ?? "" : "";
   return (
     msg.includes("[@ant-design/icons-angular]") ||
-    (err instanceof Error && err.name === "AggregateError" && /xhr-utils/.test(err.stack ?? ""))
+    (err instanceof Error && err.name === "AggregateError" && /xhr-utils/.test(stack)) ||
+    // codingame v25 default extensions try to fetch their bundled themes /
+    // language configs over `extension-file://` URIs at activation time. jsdom
+    // can't resolve that scheme so the fetch rejects, but it's purely cosmetic
+    // — the spec body never depends on the theme/grammar being applied.
+    msg.includes("extension-file://") ||
+    /workbenchThemeService|monaco-vscode-theme|monaco-vscode-.*-default-extension/.test(stack)
   );
 }
 process.on("uncaughtException", err => {
