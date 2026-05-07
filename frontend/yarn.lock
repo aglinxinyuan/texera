@@ -2096,7 +2096,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-configuration-service-override@npm:25.1.2, @codingame/monaco-vscode-configuration-service-override@npm:^25.1.2":
+"@codingame/monaco-vscode-configuration-service-override@npm:^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-configuration-service-override@npm:25.1.2"
   dependencies:
@@ -2115,7 +2115,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-editor-service-override@npm:25.1.2, @codingame/monaco-vscode-editor-service-override@npm:^25.1.2":
+"@codingame/monaco-vscode-editor-service-override@npm:^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-editor-service-override@npm:25.1.2"
   dependencies:
@@ -2316,7 +2316,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-languages-service-override@npm:25.1.2, @codingame/monaco-vscode-languages-service-override@npm:^25.1.2":
+"@codingame/monaco-vscode-languages-service-override@npm:^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-languages-service-override@npm:25.1.2"
   dependencies:
@@ -2418,7 +2418,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-theme-service-override@npm:25.1.2, @codingame/monaco-vscode-theme-service-override@npm:^25.1.2":
+"@codingame/monaco-vscode-theme-service-override@npm:^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-theme-service-override@npm:25.1.2"
   dependencies:
@@ -10976,17 +10976,11 @@ __metadata:
     "@angular/platform-browser-dynamic": "npm:21.2.10"
     "@angular/router": "npm:21.2.10"
     "@auth0/angular-jwt": "npm:5.1.0"
-    "@codingame/monaco-vscode-configuration-service-override": "npm:25.1.2"
-    "@codingame/monaco-vscode-editor-service-override": "npm:25.1.2"
-    "@codingame/monaco-vscode-extensions-service-override": "npm:25.1.2"
     "@codingame/monaco-vscode-java-default-extension": "npm:25.1.2"
-    "@codingame/monaco-vscode-keybindings-service-override": "npm:25.1.2"
-    "@codingame/monaco-vscode-languages-service-override": "npm:25.1.2"
     "@codingame/monaco-vscode-python-default-extension": "npm:25.1.2"
     "@codingame/monaco-vscode-r-default-extension": "npm:25.1.2"
     "@codingame/monaco-vscode-textmate-service-override": "npm:25.1.2"
     "@codingame/monaco-vscode-theme-defaults-default-extension": "npm:25.1.2"
-    "@codingame/monaco-vscode-theme-service-override": "npm:25.1.2"
     "@ngneat/until-destroy": "npm:8.1.4"
     "@ngx-formly/core": "npm:6.3.12"
     "@ngx-formly/ng-zorro-antd": "npm:6.3.12"
