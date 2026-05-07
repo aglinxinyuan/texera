@@ -268,7 +268,6 @@ Angular / npm packages:
   - @codingame/monaco-vscode-monarch-service-override@25.1.2
   - @codingame/monaco-vscode-python-default-extension@25.1.2
   - @codingame/monaco-vscode-quickaccess-service-override@25.1.2
-  - @codingame/monaco-vscode-r-default-extension@25.1.2
   - @codingame/monaco-vscode-textmate-service-override@25.1.2
   - @codingame/monaco-vscode-theme-defaults-default-extension@25.1.2
   - @codingame/monaco-vscode-theme-service-override@25.1.2

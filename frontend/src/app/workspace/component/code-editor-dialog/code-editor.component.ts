@@ -153,9 +153,7 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
     this.currentOperatorId = this.workflowActionService.getJointGraphWrapper().getCurrentHighlightedOperatorIDs()[0];
     const operatorType = this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId).operatorType;
 
-    if (operatorType === "RUDFSource" || operatorType === "RUDF") {
-      this.setLanguage("r");
-    } else if (
+    if (
       operatorType === "PythonUDFV2" ||
       operatorType === "PythonUDFSourceV2" ||
       operatorType === "DualInputPortsPythonUDFV2"
@@ -229,8 +227,6 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
     switch (language.toLowerCase()) {
       case "python":
         return ".py";
-      case "r":
-        return ".r";
       case "javascript":
         return ".js";
       case "java":
@@ -300,7 +296,6 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
         .then(() =>
           Promise.all([
             import("@codingame/monaco-vscode-python-default-extension"),
-            import("@codingame/monaco-vscode-r-default-extension"),
             import("@codingame/monaco-vscode-java-default-extension"),
             import("@codingame/monaco-vscode-theme-defaults-default-extension"),
           ])

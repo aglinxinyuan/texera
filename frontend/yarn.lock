@@ -2390,15 +2390,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codingame/monaco-vscode-r-default-extension@npm:25.1.2":
-  version: 25.1.2
-  resolution: "@codingame/monaco-vscode-r-default-extension@npm:25.1.2"
-  dependencies:
-    "@codingame/monaco-vscode-api": "npm:25.1.2"
-  checksum: 10c0/411ccd07b76da356ef50e628c2c0b2d53e82db0fa93ae9709c5fbeb0743ede8de254edf16a0dc78e6bf1e2146c0531404d9d23236e21096a893f7220c388d35e
-  languageName: node
-  linkType: hard
-
 "@codingame/monaco-vscode-textmate-service-override@npm:^25.1.2":
   version: 25.1.2
   resolution: "@codingame/monaco-vscode-textmate-service-override@npm:25.1.2"
@@ -10978,7 +10969,6 @@ __metadata:
     "@auth0/angular-jwt": "npm:5.1.0"
     "@codingame/monaco-vscode-java-default-extension": "npm:25.1.2"
     "@codingame/monaco-vscode-python-default-extension": "npm:25.1.2"
-    "@codingame/monaco-vscode-r-default-extension": "npm:25.1.2"
     "@ngneat/until-destroy": "npm:8.1.4"
     "@ngx-formly/core": "npm:6.3.12"
     "@ngx-formly/ng-zorro-antd": "npm:6.3.12"
