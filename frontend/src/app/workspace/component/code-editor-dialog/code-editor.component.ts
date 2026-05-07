@@ -49,6 +49,7 @@ import {
 } from "monaco-languageclient/vscodeApiWrapper";
 import { LanguageClientWrapper, type LanguageClientConfig } from "monaco-languageclient/lcwrapper";
 import { EditorApp, type EditorAppConfig } from "monaco-languageclient/editorApp";
+import { registerCodingameWorkers } from "./codingame-worker-factory";
 // NOTE: the @codingame/monaco-vscode-*-default-extension packages are imported
 // dynamically inside `ensureVscodeApiStarted` below — see the comment there for
 // why static side-effect imports get tree-shaken in this project's build pipeline.
@@ -255,30 +256,12 @@ export class CodeEditorComponent implements AfterViewInit, SafeStyle, OnDestroy 
           }),
         },
         // Wire up the workers monaco-vscode-api spawns at runtime (editor,
-        // extension host, textmate). The package's `configureDefaultWorkerFactory`
-        // tries to load worker scripts straight out of the codingame node_modules
-        // tree via `new URL('@codingame/...', import.meta.url)`, but webpack only
-        // emits that URL as a static asset — the worker's transitive imports are
-        // never bundled, so the worker 404s on its first relative import at
-        // runtime. Instead we use the literal `new Worker(new URL('./local.ts',
-        // import.meta.url))` pattern that webpack 5 recognizes as a worker entry
-        // point; the trampoline files in `./workers/` re-export the codingame
-        // worker source and pull the whole dep tree into the bundle.
-        monacoWorkerFactory: () => {
-          const env = getEnhancedMonacoEnvironment();
-          env.getWorker = (_workerId: string, label: string): Worker => {
-            switch (label) {
-              case "editorWorkerService":
-                return new Worker(new URL("./workers/editor.worker", import.meta.url), { type: "module" });
-              case "extensionHostWorkerMain":
-                return new Worker(new URL("./workers/extension-host.worker", import.meta.url), { type: "module" });
-              case "TextMateWorker":
-                return new Worker(new URL("./workers/textmate.worker", import.meta.url), { type: "module" });
-              default:
-                throw new Error(`No worker configured for label: ${label}`);
-            }
-          };
-        },
+        // extension host, textmate). The URL refs live in a sibling file that
+        // gets fileReplacements'd to a stub for the test pipeline — esbuild
+        // (used by @angular/build:unit-test) resolves `new URL(spec,
+        // import.meta.url)` literally and would otherwise fail on the codingame
+        // package paths. Webpack 5 handles them correctly.
+        monacoWorkerFactory: registerCodingameWorkers,
       };
       const apiWrapper = new MonacoVscodeApiWrapper(apiConfig);
       // Start the vscode-api FIRST, then load AND fully activate the default

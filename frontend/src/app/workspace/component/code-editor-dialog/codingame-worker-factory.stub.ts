@@ -17,5 +17,10 @@
  * under the License.
  */
 
-// See ./editor.worker.ts for why this trampoline exists.
-import "@codingame/monaco-vscode-api/workers/extensionHost.worker";
+// Test-time replacement for ./codingame-worker-factory.ts (see angular.json
+// `gui:build-test`'s fileReplacements). The real file's `new URL("@codingame/...",
+// import.meta.url)` calls fail to resolve under esbuild — this stub keeps unit
+// tests buildable; tests don't instantiate the editor's Web Workers.
+export function registerCodingameWorkers(): void {
+  // no-op
+}
