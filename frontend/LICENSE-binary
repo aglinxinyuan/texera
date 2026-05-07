@@ -277,7 +277,6 @@ Angular / npm packages:
   - base64-js@1.5.1
   - brace-expansion@2.1.0
   - buffer@5.7.1
-  - content-disposition@0.5.4
   - css-loader@6.11.0
   - dagre@0.8.5
   - date-fns@2.30.0
