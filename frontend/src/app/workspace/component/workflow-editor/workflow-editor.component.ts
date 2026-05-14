@@ -23,6 +23,7 @@ import { NzModalCommentBoxComponent } from "./comment-box-modal/nz-modal-comment
 import { NzModalRef, NzModalService } from "ng-zorro-antd/modal";
 import { DragDropService } from "../../service/drag-drop/drag-drop.service";
 import { DynamicSchemaService } from "../../service/dynamic-schema/dynamic-schema.service";
+import { EdgeTupleAnimationService } from "../../service/edge-tuple-animation/edge-tuple-animation.service";
 import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-workflow.service";
 import { fromJointPaperEvent, JointUIService, linkPathStrokeColor } from "../../service/joint-ui/joint-ui.service";
 import { ValidationWorkflowService } from "../../service/validation/validation-workflow.service";
@@ -128,7 +129,8 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     public nzContextMenu: NzContextMenuService,
     private elementRef: ElementRef,
     private config: GuiConfigService,
-    private agentService: AgentService
+    private agentService: AgentService,
+    private edgeTupleAnimationService: EdgeTupleAnimationService
   ) {
     this.wrapper = this.workflowActionService.getJointGraphWrapper();
   }
@@ -166,6 +168,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     this.editorWrapper = document.getElementById("workflow-editor-wrapper")!;
     document.addEventListener("keydown", this._handleKeyboardAction.bind(this));
     this.initializeJointPaper();
+    this.edgeTupleAnimationService.attachToPaper(this.paper);
     this.handleDisableJointPaperInteractiveness();
     this.handleOperatorValidation();
     this.handlePaperRestoreDefaultOffset();
