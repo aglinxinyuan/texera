@@ -528,5 +528,39 @@ body.theme-tron {
   .ant-tabs-ink-bar {
     background: #00e5ff !important;
   }
+
+  /* Workflow name input in the menu bar (placeholder "Untitled Workflow"). */
+  .workflow-name {
+    background-color: #0d1530 !important;
+    color: #d6f8ff !important;
+    caret-color: #00e5ff;
+    border-radius: 3px;
+  }
+  .workflow-name::placeholder {
+    color: #4a6a9c !important;
+  }
+  .workflow-name:hover {
+    box-shadow: 0 0 0 1px #00e5ff !important;
+  }
+  .workflow-name:focus {
+    box-shadow: 0 0 0 2px #00e5ff, 0 0 10px rgba(0, 229, 255, 0.6) !important;
+    outline: none;
+  }
+
+  /* Collapse / expand trigger at the bottom of a side panel (nz-sider). */
+  .ant-layout-sider-trigger {
+    background-color: #08102a !important;
+    color: #00e5ff !important;
+    border-top: 1px solid #1a2e5c;
+  }
+  .ant-layout-sider-trigger:hover {
+    background-color: #14224a !important;
+    color: #00ffff !important;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+  }
+  .ant-layout-sider-trigger .anticon,
+  .ant-layout-sider-trigger i {
+    color: #00e5ff !important;
+  }
 }
 
