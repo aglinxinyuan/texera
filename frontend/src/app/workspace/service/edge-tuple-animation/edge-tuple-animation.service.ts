@@ -36,15 +36,23 @@ interface ActiveBubble {
   pathEl: SVGPathElement;
   pathLen: number;
   linkID: string;
+  sourceOperatorID: string;
+  contentKey: string; // "" for dot; otherwise the rendered text — used to skip redundant updates
 }
 
 /**
  * Animates "tuple bubbles" along workflow edges while a workflow is running.
  *
+ * Visual modes:
+ *   - dot   (no field cached yet): a small filled circle
+ *   - bare  (single field):        plain text, no background pill
+ *   - pill  (2+ fields):           rounded-rect pill with comma-separated values
+ *
  * Trigger: per-tick output-count delta from OperatorStatisticsUpdateEvent.
- * Content: latest tuple content cached from WebResultUpdateEvent (set mode),
+ * Content: latest tuple cached from WebResultUpdateEvent (set mode),
  *          PaginatedResultEvent, or OperatorCurrentTuplesUpdateEvent (pause).
- *          Falls back to a "•" dot when no content is known yet.
+ *          When content arrives mid-flight, active dot bubbles are upgraded
+ *          in place.
  */
 @Injectable({ providedIn: "root" })
 export class EdgeTupleAnimationService {
@@ -54,13 +62,13 @@ export class EdgeTupleAnimationService {
   private static readonly STAGGER_MS = 140;
   private static readonly MAX_TEXT_LEN = 28;
   private static readonly MAX_FIELDS_IN_BUBBLE = 3;
-  private static readonly PAG_REQUEST_INTERVAL_MS = 1200;
+  private static readonly PAG_REQUEST_INTERVAL_MS = 600;
 
   private paper: joint.dia.Paper | null = null;
   private overlayLayer: SVGGElement | null = null;
   private enabled = true;
 
-  private latestContentByOperator = new Map<string, string>();
+  private latestFieldsByOperator = new Map<string, string[]>();
   private prevOutputCountByOperator = new Map<string, number>();
   private inflightCountByLink = new Map<string, number>();
   private lastPagRequestAt = new Map<string, number>();
@@ -131,12 +139,11 @@ export class EdgeTupleAnimationService {
   }
 
   private subscribe(): void {
-    // Avoid double-subscribing if attachToPaper is called again with the same paper.
     this.subscriptions.unsubscribe();
     this.subscriptions = new Subscription();
 
     // Content cache: WebResultUpdateEvent
-    // - WebDataUpdate (set/delta mode, e.g. visualization ops): table is inline → cache it.
+    // - WebDataUpdate (set/delta mode): inline table → cache directly.
     // - WebPaginationUpdate (typical pipeline ops): no inline table → fire a paginated fetch.
     this.subscriptions.add(
       this.workflowWebsocketService.subscribeToEvent("WebResultUpdateEvent").subscribe(evt => {
@@ -147,8 +154,7 @@ export class EdgeTupleAnimationService {
           if (!u) continue;
           if (isWebDataUpdate(u as any) && Array.isArray((u as any).table) && (u as any).table.length > 0) {
             const table = (u as any).table as IndexableObject[];
-            const repr = this.composeFieldsFromRow(table[table.length - 1]);
-            if (repr) this.latestContentByOperator.set(opId, repr);
+            this.cacheFieldsForOp(opId, this.fieldsFromRow(table[table.length - 1]));
           } else if (isWebPaginationUpdate(u as any) && (u as any).totalNumTuples > 0) {
             this.requestLatestTupleFor(opId, (u as any).totalNumTuples as number);
           }
@@ -156,12 +162,11 @@ export class EdgeTupleAnimationService {
       })
     );
 
-    // Content cache: PaginatedResultEvent (response to our fetches and the result panel's)
+    // Content cache: PaginatedResultEvent
     this.subscriptions.add(
       this.workflowWebsocketService.subscribeToEvent("PaginatedResultEvent").subscribe(evt => {
         if (evt.table && evt.table.length > 0) {
-          const repr = this.composeFieldsFromRow(evt.table[evt.table.length - 1] as IndexableObject);
-          if (repr) this.latestContentByOperator.set(evt.operatorID, repr);
+          this.cacheFieldsForOp(evt.operatorID, this.fieldsFromRow(evt.table[evt.table.length - 1] as IndexableObject));
         }
       })
     );
@@ -171,8 +176,7 @@ export class EdgeTupleAnimationService {
       this.workflowWebsocketService.subscribeToEvent("OperatorCurrentTuplesUpdateEvent").subscribe(evt => {
         const sample = evt.tuples?.[0]?.tuple;
         if (sample && sample.length > 0) {
-          const repr = this.composeFieldsFromArray(sample);
-          if (repr) this.latestContentByOperator.set(evt.operatorID, repr);
+          this.cacheFieldsForOp(evt.operatorID, this.fieldsFromArray(sample));
         }
       })
     );
@@ -198,29 +202,45 @@ export class EdgeTupleAnimationService {
         if (current.state === ExecutionState.Initializing || current.state === ExecutionState.Uninitialized) {
           this.clearAllBubbles();
           this.prevOutputCountByOperator.clear();
-          this.latestContentByOperator.clear();
+          this.latestFieldsByOperator.clear();
           this.lastPagRequestAt.clear();
         }
       })
     );
   }
 
+  /**
+   * Update the content cache and backfill any in-flight bubbles whose source
+   * operator just got fresh content, so dots become content pills mid-flight.
+   */
+  private cacheFieldsForOp(operatorID: string, fields: string[]): void {
+    if (fields.length === 0) return;
+    this.latestFieldsByOperator.set(operatorID, fields);
+    for (const b of this.active) {
+      if (b.sourceOperatorID !== operatorID) continue;
+      const newKey = fields.join(", ");
+      if (b.contentKey === newKey) continue;
+      this.replaceBubbleVisual(b, fields);
+      b.contentKey = newKey;
+    }
+  }
+
   private fireForOperator(operatorID: string, count: number): void {
     if (!this.paper) return;
     const outLinks = this.workflowActionService.getTexeraGraph().getOutputLinksByOperatorId(operatorID);
     if (outLinks.length === 0) return;
-    const content = this.latestContentByOperator.get(operatorID);
+    const fields = this.latestFieldsByOperator.get(operatorID);
     for (const link of outLinks) {
       const inflight = this.inflightCountByLink.get(link.linkID) ?? 0;
       const room = EdgeTupleAnimationService.MAX_INFLIGHT_PER_LINK - inflight;
       const toSpawn = Math.min(count, Math.max(room, 0));
       for (let i = 0; i < toSpawn; i++) {
-        this.spawnBubble(link.linkID, content, i * EdgeTupleAnimationService.STAGGER_MS);
+        this.spawnBubble(link.linkID, operatorID, fields, i * EdgeTupleAnimationService.STAGGER_MS);
       }
     }
   }
 
-  private spawnBubble(linkID: string, content: string | undefined, delayMs: number): void {
+  private spawnBubble(linkID: string, sourceOperatorID: string, fields: string[] | undefined, delayMs: number): void {
     if (!this.paper || !this.overlayLayer) return;
     const jointLink = this.paper.getModelById(linkID) as joint.dia.Link | undefined;
     if (!jointLink) return;
@@ -237,8 +257,10 @@ export class EdgeTupleAnimationService {
     }
     if (pathLen < 1) return;
 
-    const text = content ? this.truncate(content, EdgeTupleAnimationService.MAX_TEXT_LEN) : "•";
-    const g = this.buildBubbleElement(text);
+    const g = document.createElementNS(SVG_NS, "g") as SVGGElement;
+    g.setAttribute("class", "tuple-bubble");
+    g.setAttribute("opacity", "0");
+    this.renderBubbleVisual(g, fields ?? []);
     this.overlayLayer.appendChild(g);
 
     const bubble: ActiveBubble = {
@@ -248,17 +270,64 @@ export class EdgeTupleAnimationService {
       pathEl,
       pathLen,
       linkID,
+      sourceOperatorID,
+      contentKey: fields && fields.length > 0 ? fields.join(", ") : "",
     };
     this.active.push(bubble);
     this.inflightCountByLink.set(linkID, (this.inflightCountByLink.get(linkID) ?? 0) + 1);
     this.ensureRafRunning();
   }
 
-  private buildBubbleElement(text: string): SVGGElement {
-    const g = document.createElementNS(SVG_NS, "g") as SVGGElement;
-    g.setAttribute("class", "tuple-bubble");
-    g.setAttribute("opacity", "0");
+  /**
+   * Replace a bubble's inner visual without unmounting the outer `<g>` so the
+   * in-flight animation transform continues uninterrupted.
+   */
+  private replaceBubbleVisual(bubble: ActiveBubble, fields: string[]): void {
+    while (bubble.el.firstChild) bubble.el.removeChild(bubble.el.firstChild);
+    this.renderBubbleVisual(bubble.el, fields);
+  }
 
+  /**
+   * Render mode by field count:
+   *   0 → small filled circle ("dot")
+   *   1 → plain text (no background)
+   *   2+ → rounded-rect pill with white text
+   */
+  private renderBubbleVisual(g: SVGGElement, fields: string[]): void {
+    if (fields.length === 0) {
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("r", "3.5");
+      dot.setAttribute("cx", "0");
+      dot.setAttribute("cy", "0");
+      dot.setAttribute("fill", "#1976d2");
+      g.appendChild(dot);
+      return;
+    }
+
+    const text = this.truncate(fields.join(", "), EdgeTupleAnimationService.MAX_TEXT_LEN);
+
+    if (fields.length === 1) {
+      // Bare text — no background pill, only the value.
+      const t = document.createElementNS(SVG_NS, "text");
+      t.setAttribute("x", "0");
+      t.setAttribute("y", "0");
+      t.setAttribute("text-anchor", "middle");
+      t.setAttribute("dominant-baseline", "central");
+      t.setAttribute("font-family", "Roboto, Arial, sans-serif");
+      t.setAttribute("font-size", "12");
+      t.setAttribute("font-weight", "600");
+      t.setAttribute("fill", "#0d47a1");
+      t.setAttribute("paint-order", "stroke");
+      t.setAttribute("stroke", "#ffffff");
+      t.setAttribute("stroke-width", "3");
+      t.setAttribute("stroke-linejoin", "round");
+      t.style.userSelect = "none";
+      t.textContent = text;
+      g.appendChild(t);
+      return;
+    }
+
+    // Pill — multiple fields.
     const padding = 8;
     const approxCharW = 6.6;
     const w = Math.max(22, text.length * approxCharW + padding * 2);
@@ -289,7 +358,6 @@ export class EdgeTupleAnimationService {
 
     g.appendChild(rect);
     g.appendChild(t);
-    return g;
   }
 
   private ensureRafRunning(): void {
@@ -350,9 +418,9 @@ export class EdgeTupleAnimationService {
 
   /**
    * Send a paginated fetch for op X's last page so we get an actual row to cache.
-   * Rate-limited per operator so we don't spam the backend on every tick.
-   * The result panel uses requestID correlation, so our requests don't collide
-   * with its in-flight requests; both subscribers see PaginatedResultEvent.
+   * Rate-limited per operator. The result panel uses requestID correlation, so
+   * our requests don't collide with its in-flight requests; both subscribers
+   * receive PaginatedResultEvent.
    */
   private requestLatestTupleFor(operatorID: string, totalNumTuples: number): void {
     const now = performance.now();
@@ -369,7 +437,7 @@ export class EdgeTupleAnimationService {
     });
   }
 
-  private composeFieldsFromRow(row: IndexableObject): string | undefined {
+  private fieldsFromRow(row: IndexableObject): string[] {
     const values: string[] = [];
     for (const k of Object.keys(row)) {
       const v = (row as Record<string, unknown>)[k];
@@ -379,19 +447,17 @@ export class EdgeTupleAnimationService {
       values.push(s);
       if (values.length >= EdgeTupleAnimationService.MAX_FIELDS_IN_BUBBLE) break;
     }
-    if (values.length === 0) return undefined;
-    return this.truncate(values.join(", "), EdgeTupleAnimationService.MAX_TEXT_LEN);
+    return values;
   }
 
-  private composeFieldsFromArray(fields: ReadonlyArray<string>): string | undefined {
+  private fieldsFromArray(fields: ReadonlyArray<string>): string[] {
     const values: string[] = [];
     for (const f of fields) {
       if (!f || f === "NULL") continue;
       values.push(f);
       if (values.length >= EdgeTupleAnimationService.MAX_FIELDS_IN_BUBBLE) break;
     }
-    if (values.length === 0) return undefined;
-    return this.truncate(values.join(", "), EdgeTupleAnimationService.MAX_TEXT_LEN);
+    return values;
   }
 
   private truncate(s: string, n: number): string {
