@@ -562,5 +562,136 @@ body.theme-tron {
   .ant-layout-sider-trigger i {
     color: #00e5ff !important;
   }
+
+  /* ---- Side panels (left, right/property editor, agent) ---- */
+  /* Targets the draggable .box containers used by left-panel and
+     property-editor. The .box class is shared. */
+  texera-left-panel,
+  texera-property-editor,
+  texera-agent-panel,
+  texera-left-panel .box,
+  texera-property-editor .box,
+  texera-agent-panel .box,
+  texera-left-panel #left-container,
+  texera-property-editor #right-container {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+    border: 1px solid #1a2e5c !important;
+  }
+
+  /* The little dock strip on the side when the panel is collapsed,
+     and the open-state header strip with controls. */
+  texera-left-panel #docked-buttons,
+  texera-left-panel #dock,
+  texera-left-panel #return-button,
+  texera-property-editor #docked-buttons,
+  texera-property-editor #property-buttons {
+    background-color: #0d1530 !important;
+    border-color: #1a2e5c !important;
+  }
+
+  /* Open content area + panel title */
+  texera-left-panel #content,
+  texera-property-editor #content,
+  texera-property-editor #property-editor {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+  }
+  texera-left-panel #title,
+  texera-property-editor #title {
+    color: #00e5ff !important;
+  }
+
+  /* nz-menu-items inside the panels (the icon buttons in the dock strip) */
+  texera-left-panel .ant-menu,
+  texera-property-editor .ant-menu {
+    background-color: transparent !important;
+  }
+  texera-left-panel .ant-menu-item,
+  texera-property-editor .ant-menu-item {
+    color: #d6f8ff !important;
+  }
+  texera-left-panel .ant-menu-item:hover,
+  texera-property-editor .ant-menu-item:hover,
+  texera-left-panel .ant-menu-item-selected,
+  texera-property-editor .ant-menu-item-selected {
+    background-color: #14224a !important;
+    color: #00e5ff !important;
+  }
+
+  /* ---- Result panel at the bottom ---- */
+  #result,
+  texera-result-panel,
+  texera-result-panel .box {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+    border-top: 1px solid #1a2e5c !important;
+  }
+
+  /* ---- Form controls inside property editor (Formly inputs) ---- */
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-input-number,
+  .ant-input-number-input,
+  .ant-select-selector,
+  .ant-picker {
+    background-color: #0d1530 !important;
+    color: #d6f8ff !important;
+    border-color: #1a2e5c !important;
+  }
+  .ant-input::placeholder,
+  .ant-input-number-input::placeholder {
+    color: #4a6a9c !important;
+  }
+  .ant-input:focus,
+  .ant-input-affix-wrapper:focus,
+  .ant-input-number:focus-within,
+  .ant-select-focused .ant-select-selector,
+  .ant-picker-focused {
+    border-color: #00e5ff !important;
+    box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.25) !important;
+  }
+  .ant-select-arrow,
+  .ant-select-selection-placeholder {
+    color: #4a6a9c !important;
+  }
+  .ant-form-item-label > label,
+  .ant-form-item-extra {
+    color: #d6f8ff !important;
+  }
+
+  /* nz-card / panel sections inside property editor */
+  .ant-card,
+  .ant-collapse,
+  .ant-collapse-content,
+  .ant-collapse-item,
+  .ant-collapse-header {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+    border-color: #1a2e5c !important;
+  }
+
+  /* Scrollbars (WebKit) inside the dark panels */
+  texera-left-panel ::-webkit-scrollbar,
+  texera-property-editor ::-webkit-scrollbar,
+  texera-result-panel ::-webkit-scrollbar,
+  texera-agent-panel ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+    background-color: #08102a;
+  }
+  texera-left-panel ::-webkit-scrollbar-thumb,
+  texera-property-editor ::-webkit-scrollbar-thumb,
+  texera-result-panel ::-webkit-scrollbar-thumb,
+  texera-agent-panel ::-webkit-scrollbar-thumb {
+    background-color: #1a2e5c;
+    border-radius: 4px;
+  }
+  texera-left-panel ::-webkit-scrollbar-thumb:hover,
+  texera-property-editor ::-webkit-scrollbar-thumb:hover,
+  texera-result-panel ::-webkit-scrollbar-thumb:hover,
+  texera-agent-panel ::-webkit-scrollbar-thumb:hover {
+    background-color: #00e5ff;
+  }
 }
 
