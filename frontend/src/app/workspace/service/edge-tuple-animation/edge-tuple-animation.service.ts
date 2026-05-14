@@ -67,6 +67,7 @@ export class EdgeTupleAnimationService {
   private paper: joint.dia.Paper | null = null;
   private overlayLayer: SVGGElement | null = null;
   private enabled = true;
+  private debug = true;
 
   private latestFieldsByOperator = new Map<string, string[]>();
   private prevOutputCountByOperator = new Map<string, number>();
@@ -83,7 +84,12 @@ export class EdgeTupleAnimationService {
     private workflowStatusService: WorkflowStatusService,
     private workflowActionService: WorkflowActionService,
     private executeWorkflowService: ExecuteWorkflowService
-  ) {}
+  ) {
+    // Expose the service on window for ad-hoc debugging:
+    //   edgeTuple.setDebug(true)
+    //   edgeTuple.dumpState()
+    if (typeof window !== "undefined") (window as any).edgeTuple = this;
+  }
 
   public setEnabled(on: boolean): void {
     this.enabled = on;
@@ -92,6 +98,41 @@ export class EdgeTupleAnimationService {
 
   public isEnabled(): boolean {
     return this.enabled;
+  }
+
+  public setDebug(on: boolean): void {
+    this.debug = on;
+    console.log("[edgeTuple] debug =", on);
+  }
+
+  public dumpState(): {
+    enabled: boolean;
+    sendPatched: boolean;
+    cacheSize: number;
+    cache: Record<string, string[]>;
+    prevCounts: Record<string, number>;
+    activeBubbles: number;
+    inflightByLink: Record<string, number>;
+  } {
+    const cache: Record<string, string[]> = {};
+    for (const [k, v] of this.latestFieldsByOperator) cache[k] = v;
+    const prev: Record<string, number> = {};
+    for (const [k, v] of this.prevOutputCountByOperator) prev[k] = v;
+    const inflight: Record<string, number> = {};
+    for (const [k, v] of this.inflightCountByLink) inflight[k] = v;
+    return {
+      enabled: this.enabled,
+      sendPatched: this.sendPatched,
+      cacheSize: this.latestFieldsByOperator.size,
+      cache,
+      prevCounts: prev,
+      activeBubbles: this.active.length,
+      inflightByLink: inflight,
+    };
+  }
+
+  private log(...args: unknown[]): void {
+    if (this.debug) console.log("[edgeTuple]", ...args);
   }
 
   public attachToPaper(paper: joint.dia.Paper): void {
@@ -116,15 +157,18 @@ export class EdgeTupleAnimationService {
     this.sendPatched = true;
     const svc = this.workflowWebsocketService;
     const original = svc.send.bind(svc);
+    const log = this.log.bind(this);
     svc.send = (<T extends keyof any>(type: T, payload: any): void => {
       if (type === "WorkflowExecuteRequest" && payload?.logicalPlan?.operators) {
         const allIds: string[] = payload.logicalPlan.operators.map((o: { operatorID: string }) => o.operatorID);
         const merged = new Set<string>(payload.logicalPlan.opsToViewResult ?? []);
         for (const id of allIds) merged.add(id);
         payload.logicalPlan.opsToViewResult = Array.from(merged);
+        log("patched WorkflowExecuteRequest, opsToViewResult =", payload.logicalPlan.opsToViewResult);
       }
       return original(type as any, payload);
     }) as typeof svc.send;
+    this.log("send() patched");
   }
 
   private createOverlayLayer(paper: joint.dia.Paper): SVGGElement {
@@ -148,15 +192,20 @@ export class EdgeTupleAnimationService {
     this.subscriptions.add(
       this.workflowWebsocketService.subscribeToEvent("WebResultUpdateEvent").subscribe(evt => {
         const updates = (evt as any).updates as Record<string, unknown> | undefined;
+        this.log("WebResultUpdateEvent ops =", updates ? Object.keys(updates) : "(none)");
         if (!updates) return;
         for (const opId of Object.keys(updates)) {
           const u = updates[opId];
           if (!u) continue;
           if (isWebDataUpdate(u as any) && Array.isArray((u as any).table) && (u as any).table.length > 0) {
             const table = (u as any).table as IndexableObject[];
+            this.log("  WebDataUpdate", opId, "rows =", table.length, "lastRow =", table[table.length - 1]);
             this.cacheFieldsForOp(opId, this.fieldsFromRow(table[table.length - 1]));
           } else if (isWebPaginationUpdate(u as any) && (u as any).totalNumTuples > 0) {
+            this.log("  WebPaginationUpdate", opId, "totalNumTuples =", (u as any).totalNumTuples);
             this.requestLatestTupleFor(opId, (u as any).totalNumTuples as number);
+          } else {
+            this.log("  skipped update", opId, "u =", u);
           }
         }
       })
@@ -165,6 +214,7 @@ export class EdgeTupleAnimationService {
     // Content cache: PaginatedResultEvent
     this.subscriptions.add(
       this.workflowWebsocketService.subscribeToEvent("PaginatedResultEvent").subscribe(evt => {
+        this.log("PaginatedResultEvent", evt.operatorID, "rows =", evt.table?.length ?? 0);
         if (evt.table && evt.table.length > 0) {
           this.cacheFieldsForOp(evt.operatorID, this.fieldsFromRow(evt.table[evt.table.length - 1] as IndexableObject));
         }
@@ -216,13 +266,16 @@ export class EdgeTupleAnimationService {
   private cacheFieldsForOp(operatorID: string, fields: string[]): void {
     if (fields.length === 0) return;
     this.latestFieldsByOperator.set(operatorID, fields);
+    let backfilled = 0;
     for (const b of this.active) {
       if (b.sourceOperatorID !== operatorID) continue;
       const newKey = fields.join(", ");
       if (b.contentKey === newKey) continue;
       this.replaceBubbleVisual(b, fields);
       b.contentKey = newKey;
+      backfilled++;
     }
+    this.log("cacheFieldsForOp", operatorID, "fields =", fields, "backfilled =", backfilled);
   }
 
   private fireForOperator(operatorID: string, count: number): void {
@@ -230,6 +283,7 @@ export class EdgeTupleAnimationService {
     const outLinks = this.workflowActionService.getTexeraGraph().getOutputLinksByOperatorId(operatorID);
     if (outLinks.length === 0) return;
     const fields = this.latestFieldsByOperator.get(operatorID);
+    this.log("fireForOperator", operatorID, "count =", count, "links =", outLinks.length, "hasContent =", !!fields);
     for (const link of outLinks) {
       const inflight = this.inflightCountByLink.get(link.linkID) ?? 0;
       const room = EdgeTupleAnimationService.MAX_INFLIGHT_PER_LINK - inflight;
@@ -425,10 +479,14 @@ export class EdgeTupleAnimationService {
   private requestLatestTupleFor(operatorID: string, totalNumTuples: number): void {
     const now = performance.now();
     const last = this.lastPagRequestAt.get(operatorID) ?? -Infinity;
-    if (now - last < EdgeTupleAnimationService.PAG_REQUEST_INTERVAL_MS) return;
+    if (now - last < EdgeTupleAnimationService.PAG_REQUEST_INTERVAL_MS) {
+      this.log("requestLatestTupleFor", operatorID, "skipped (rate-limited)");
+      return;
+    }
     this.lastPagRequestAt.set(operatorID, now);
     const pageSize = 1;
     const lastPage = Math.max(1, Math.ceil(totalNumTuples / pageSize));
+    this.log("requestLatestTupleFor", operatorID, "pageIndex =", lastPage, "pageSize =", pageSize);
     this.workflowWebsocketService.send("ResultPaginationRequest", {
       requestID: `edge-tuple-${operatorID}-${Math.floor(now)}`,
       operatorID,
