@@ -693,5 +693,27 @@ body.theme-tron {
   texera-agent-panel ::-webkit-scrollbar-thumb:hover {
     background-color: #00e5ff;
   }
+
+  /* ---- Workflow thumbnail in the dashboard list ---- */
+  texera-workflow-thumbnail .workflow-thumbnail {
+    background: #0d1530 !important;
+    border-color: #1a2e5c !important;
+  }
+  texera-workflow-thumbnail .thumbnail-link {
+    stroke: #00e5ff !important;
+    opacity: 0.85;
+    filter: drop-shadow(0 0 1.5px rgba(0, 229, 255, 0.7));
+  }
+  texera-workflow-thumbnail .thumbnail-op {
+    stroke: rgba(0, 229, 255, 0.4) !important;
+  }
+  texera-workflow-thumbnail .workflow-thumbnail-empty {
+    background: #0d1530 !important;
+    border-color: #1a2e5c !important;
+    color: #4a6a9c !important;
+  }
+  .workflow-list-item .thumbnail-link:hover texera-workflow-thumbnail .workflow-thumbnail {
+    box-shadow: 0 0 0 2px #00e5ff, 0 0 12px rgba(0, 229, 255, 0.5) !important;
+  }
 }
 

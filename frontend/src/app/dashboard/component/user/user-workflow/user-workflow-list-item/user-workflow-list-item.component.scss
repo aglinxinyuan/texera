@@ -20,6 +20,20 @@
 @import "../../../section-style";
 @import "../../../dashboard.component.scss";
 
+/* Widen the avatar slot to fit the workflow thumbnail (120x72). */
+.workflow-list-item .ant-list-item-meta-avatar.thumbnail-avatar {
+  margin-right: 16px;
+}
+.workflow-list-item .thumbnail-link {
+  display: inline-block;
+  line-height: 0;
+  text-decoration: none;
+}
+.workflow-list-item .thumbnail-link:hover texera-workflow-thumbnail .workflow-thumbnail {
+  box-shadow: 0 0 0 2px #1890ff;
+  transition: box-shadow 0.15s ease;
+}
+
 /**
   * css for project label, shared by workflow section and file section
 **/

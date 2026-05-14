@@ -20,18 +20,22 @@
 <nz-list-item class="workflow-list-item">
   <nz-list-item-meta>
     <!-- Margin need only when the checkbox is not visible -->
-    <nz-list-item-meta-avatar [ngStyle]="{ 'margin-left': editable ? 'none' : '16px' }">
+    <nz-list-item-meta-avatar
+      class="thumbnail-avatar"
+      [ngStyle]="{ 'margin-left': editable ? 'none' : '16px' }">
       <label
         *ngIf="editable"
         class="workflow-item-checkbox"
         id="{{workflow.wid}}"
         ngDefaultControl
         [(ngModel)]="entry.checked"></label>
-      <nz-avatar
-        [ngStyle]="{ 'background-color': 'grey', 'vertical-align': 'middle' }"
-        [nzGap]="4"
-        [nzText]="'' + workflow.wid"
-        nzSize="default"></nz-avatar>
+      <a
+        [routerLink]="DASHBOARD_USER_WORKSPACE + '/' + workflow.wid"
+        nz-tooltip="Workflow #{{workflow.wid}}"
+        nzTooltipPlacement="bottom"
+        class="thumbnail-link">
+        <texera-workflow-thumbnail [content]="workflow.content"></texera-workflow-thumbnail>
+      </a>
     </nz-list-item-meta-avatar>
 
     <!-- editable name of saved workflow -->

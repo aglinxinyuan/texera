@@ -55,6 +55,7 @@ import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzWaveDirective } from "ng-zorro-antd/core/wave";
 import { NzPopconfirmDirective } from "ng-zorro-antd/popconfirm";
 import { HighlightSearchTermsPipe } from "./highlight-search-terms.pipe";
+import { WorkflowThumbnailComponent } from "../workflow-thumbnail/workflow-thumbnail.component";
 
 @UntilDestroy()
 @Component({
@@ -85,6 +86,7 @@ import { HighlightSearchTermsPipe } from "./highlight-search-terms.pipe";
     NzPopconfirmDirective,
     DatePipe,
     HighlightSearchTermsPipe,
+    WorkflowThumbnailComponent,
   ],
 })
 export class UserWorkflowListItemComponent {

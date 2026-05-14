@@ -1,0 +1,31 @@
+<svg
+  *ngIf="!isEmpty"
+  class="workflow-thumbnail"
+  [attr.viewBox]="viewBox"
+  preserveAspectRatio="xMidYMid meet"
+  xmlns="http://www.w3.org/2000/svg">
+  <g class="thumbnail-links">
+    <path
+      *ngFor="let link of renderedLinks"
+      [attr.d]="link.d"
+      class="thumbnail-link" />
+  </g>
+  <g class="thumbnail-ops">
+    <rect
+      *ngFor="let op of renderedOps"
+      [attr.x]="op.x"
+      [attr.y]="op.y"
+      [attr.width]="OP_WIDTH"
+      [attr.height]="OP_HEIGHT"
+      [attr.fill]="op.color"
+      class="thumbnail-op"
+      rx="4"
+      ry="4" />
+  </g>
+</svg>
+<div
+  *ngIf="isEmpty"
+  class="workflow-thumbnail-empty"
+  title="Empty workflow">
+  <span>—</span>
+</div>
