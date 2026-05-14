@@ -24,7 +24,7 @@ import { ExecuteWorkflowService } from "../execute-workflow/execute-workflow.ser
 import { WorkflowActionService } from "../workflow-graph/model/workflow-action.service";
 import { WorkflowStatusService } from "../workflow-status/workflow-status.service";
 import { WorkflowWebsocketService } from "../workflow-websocket/workflow-websocket.service";
-import { ExecutionState, isWebDataUpdate } from "../../types/execute-workflow.interface";
+import { ExecutionState, isWebDataUpdate, isWebPaginationUpdate } from "../../types/execute-workflow.interface";
 import { IndexableObject } from "../../types/result-table.interface";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -52,7 +52,9 @@ export class EdgeTupleAnimationService {
   private static readonly MAX_SPAWN_PER_TICK = 5;
   private static readonly BUBBLE_DURATION_MS = 1400;
   private static readonly STAGGER_MS = 140;
-  private static readonly MAX_TEXT_LEN = 18;
+  private static readonly MAX_TEXT_LEN = 28;
+  private static readonly MAX_FIELDS_IN_BUBBLE = 3;
+  private static readonly PAG_REQUEST_INTERVAL_MS = 1200;
 
   private paper: joint.dia.Paper | null = null;
   private overlayLayer: SVGGElement | null = null;
@@ -61,8 +63,10 @@ export class EdgeTupleAnimationService {
   private latestContentByOperator = new Map<string, string>();
   private prevOutputCountByOperator = new Map<string, number>();
   private inflightCountByLink = new Map<string, number>();
+  private lastPagRequestAt = new Map<string, number>();
   private active: ActiveBubble[] = [];
   private rafHandle: number | null = null;
+  private sendPatched = false;
 
   private subscriptions = new Subscription();
 
@@ -89,7 +93,30 @@ export class EdgeTupleAnimationService {
     this.clearAllBubbles();
     this.paper = paper;
     this.overlayLayer = this.createOverlayLayer(paper);
+    this.patchExecuteRequestOnce();
     this.subscribe();
+  }
+
+  /**
+   * Inject all operator IDs into opsToViewResult on outgoing WorkflowExecuteRequest.
+   * Forces the backend to materialize results for every operator, so
+   * WebResultUpdateEvent fires for every op and the content cache stays warm.
+   * Idempotent — patches the websocket service's send method once.
+   */
+  private patchExecuteRequestOnce(): void {
+    if (this.sendPatched) return;
+    this.sendPatched = true;
+    const svc = this.workflowWebsocketService;
+    const original = svc.send.bind(svc);
+    svc.send = (<T extends keyof any>(type: T, payload: any): void => {
+      if (type === "WorkflowExecuteRequest" && payload?.logicalPlan?.operators) {
+        const allIds: string[] = payload.logicalPlan.operators.map((o: { operatorID: string }) => o.operatorID);
+        const merged = new Set<string>(payload.logicalPlan.opsToViewResult ?? []);
+        for (const id of allIds) merged.add(id);
+        payload.logicalPlan.opsToViewResult = Array.from(merged);
+      }
+      return original(type as any, payload);
+    }) as typeof svc.send;
   }
 
   private createOverlayLayer(paper: joint.dia.Paper): SVGGElement {
@@ -108,28 +135,32 @@ export class EdgeTupleAnimationService {
     this.subscriptions.unsubscribe();
     this.subscriptions = new Subscription();
 
-    // Content cache: WebResultUpdateEvent (live during running, for ops with materialized results)
+    // Content cache: WebResultUpdateEvent
+    // - WebDataUpdate (set/delta mode, e.g. visualization ops): table is inline → cache it.
+    // - WebPaginationUpdate (typical pipeline ops): no inline table → fire a paginated fetch.
     this.subscriptions.add(
       this.workflowWebsocketService.subscribeToEvent("WebResultUpdateEvent").subscribe(evt => {
-        const updates = (evt as any).updates as Record<string, any> | undefined;
+        const updates = (evt as any).updates as Record<string, unknown> | undefined;
         if (!updates) return;
         for (const opId of Object.keys(updates)) {
           const u = updates[opId];
-          if (u && isWebDataUpdate(u) && Array.isArray(u.table) && u.table.length > 0) {
-            const row = u.table[u.table.length - 1] as IndexableObject;
-            const repr = this.firstReadableField(row);
+          if (!u) continue;
+          if (isWebDataUpdate(u as any) && Array.isArray((u as any).table) && (u as any).table.length > 0) {
+            const table = (u as any).table as IndexableObject[];
+            const repr = this.composeFieldsFromRow(table[table.length - 1]);
             if (repr) this.latestContentByOperator.set(opId, repr);
+          } else if (isWebPaginationUpdate(u as any) && (u as any).totalNumTuples > 0) {
+            this.requestLatestTupleFor(opId, (u as any).totalNumTuples as number);
           }
         }
       })
     );
 
-    // Content cache: PaginatedResultEvent (when result panel pages in)
+    // Content cache: PaginatedResultEvent (response to our fetches and the result panel's)
     this.subscriptions.add(
       this.workflowWebsocketService.subscribeToEvent("PaginatedResultEvent").subscribe(evt => {
         if (evt.table && evt.table.length > 0) {
-          const row = evt.table[evt.table.length - 1] as IndexableObject;
-          const repr = this.firstReadableField(row);
+          const repr = this.composeFieldsFromRow(evt.table[evt.table.length - 1] as IndexableObject);
           if (repr) this.latestContentByOperator.set(evt.operatorID, repr);
         }
       })
@@ -140,7 +171,7 @@ export class EdgeTupleAnimationService {
       this.workflowWebsocketService.subscribeToEvent("OperatorCurrentTuplesUpdateEvent").subscribe(evt => {
         const sample = evt.tuples?.[0]?.tuple;
         if (sample && sample.length > 0) {
-          const repr = this.firstNonEmpty(sample);
+          const repr = this.composeFieldsFromArray(sample);
           if (repr) this.latestContentByOperator.set(evt.operatorID, repr);
         }
       })
@@ -168,6 +199,7 @@ export class EdgeTupleAnimationService {
           this.clearAllBubbles();
           this.prevOutputCountByOperator.clear();
           this.latestContentByOperator.clear();
+          this.lastPagRequestAt.clear();
         }
       })
     );
@@ -316,22 +348,50 @@ export class EdgeTupleAnimationService {
     }
   }
 
-  private firstReadableField(row: IndexableObject): string | undefined {
+  /**
+   * Send a paginated fetch for op X's last page so we get an actual row to cache.
+   * Rate-limited per operator so we don't spam the backend on every tick.
+   * The result panel uses requestID correlation, so our requests don't collide
+   * with its in-flight requests; both subscribers see PaginatedResultEvent.
+   */
+  private requestLatestTupleFor(operatorID: string, totalNumTuples: number): void {
+    const now = performance.now();
+    const last = this.lastPagRequestAt.get(operatorID) ?? -Infinity;
+    if (now - last < EdgeTupleAnimationService.PAG_REQUEST_INTERVAL_MS) return;
+    this.lastPagRequestAt.set(operatorID, now);
+    const pageSize = 1;
+    const lastPage = Math.max(1, Math.ceil(totalNumTuples / pageSize));
+    this.workflowWebsocketService.send("ResultPaginationRequest", {
+      requestID: `edge-tuple-${operatorID}-${Math.floor(now)}`,
+      operatorID,
+      pageIndex: lastPage,
+      pageSize,
+    });
+  }
+
+  private composeFieldsFromRow(row: IndexableObject): string | undefined {
+    const values: string[] = [];
     for (const k of Object.keys(row)) {
       const v = (row as Record<string, unknown>)[k];
       if (v === null || v === undefined) continue;
       const s = String(v);
       if (s === "" || s === "NULL") continue;
-      return `${k}=${s}`;
+      values.push(s);
+      if (values.length >= EdgeTupleAnimationService.MAX_FIELDS_IN_BUBBLE) break;
     }
-    return undefined;
+    if (values.length === 0) return undefined;
+    return this.truncate(values.join(", "), EdgeTupleAnimationService.MAX_TEXT_LEN);
   }
 
-  private firstNonEmpty(fields: ReadonlyArray<string>): string | undefined {
+  private composeFieldsFromArray(fields: ReadonlyArray<string>): string | undefined {
+    const values: string[] = [];
     for (const f of fields) {
-      if (f && f !== "NULL") return f;
+      if (!f || f === "NULL") continue;
+      values.push(f);
+      if (values.length >= EdgeTupleAnimationService.MAX_FIELDS_IN_BUBBLE) break;
     }
-    return undefined;
+    if (values.length === 0) return undefined;
+    return this.truncate(values.join(", "), EdgeTupleAnimationService.MAX_TEXT_LEN);
   }
 
   private truncate(s: string, n: number): string {
