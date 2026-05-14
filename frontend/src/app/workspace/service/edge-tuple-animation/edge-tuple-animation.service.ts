@@ -24,58 +24,60 @@ import { ExecuteWorkflowService } from "../execute-workflow/execute-workflow.ser
 import { WorkflowActionService } from "../workflow-graph/model/workflow-action.service";
 import { WorkflowStatusService } from "../workflow-status/workflow-status.service";
 import { WorkflowWebsocketService } from "../workflow-websocket/workflow-websocket.service";
-import { ExecutionState, isWebDataUpdate, isWebPaginationUpdate } from "../../types/execute-workflow.interface";
-import { IndexableObject } from "../../types/result-table.interface";
+import { ExecutionState } from "../../types/execute-workflow.interface";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-interface ActiveBubble {
-  el: SVGGElement;
+interface Particle {
+  el: SVGCircleElement;
   start: number;
   duration: number;
   pathEl: SVGPathElement;
   pathLen: number;
   linkID: string;
-  sourceOperatorID: string;
-  contentKey: string; // "" for dot; otherwise the rendered text — used to skip redundant updates
+}
+
+interface Bloom {
+  el: SVGCircleElement;
+  start: number;
+  duration: number;
 }
 
 /**
- * Animates "tuple bubbles" along workflow edges while a workflow is running.
+ * "Particle Storm" edge animation.
  *
- * Visual modes:
- *   - dot   (no field cached yet): a small filled circle
- *   - bare  (single field):        plain text, no background pill
- *   - pill  (2+ fields):           rounded-rect pill with comma-separated values
- *
- * Trigger: per-tick output-count delta from OperatorStatisticsUpdateEvent.
- * Content: latest tuple cached from WebResultUpdateEvent (set mode),
- *          PaginatedResultEvent, or OperatorCurrentTuplesUpdateEvent (pause).
- *          When content arrives mid-flight, active dot bubbles are upgraded
- *          in place.
+ * Every edge continuously emits glowing particles along its path while the
+ * workflow runs. Emission rate per edge tracks the source operator's recent
+ * rows/sec, smoothed and decayed. Each operator pulses a colored bloom ring
+ * whenever it ships a batch. Particles inherit a deterministic hue from their
+ * source operator ID so streams from different sources stay visually distinct
+ * even where they converge.
  */
 @Injectable({ providedIn: "root" })
 export class EdgeTupleAnimationService {
-  private static readonly MAX_INFLIGHT_PER_LINK = 4;
-  private static readonly MAX_SPAWN_PER_TICK = 5;
-  private static readonly BUBBLE_DURATION_MS = 1400;
-  private static readonly STAGGER_MS = 140;
-  private static readonly MAX_TEXT_LEN = 28;
-  private static readonly MAX_FIELDS_IN_BUBBLE = 3;
-  private static readonly PAG_REQUEST_INTERVAL_MS = 600;
+  private static readonly PARTICLE_DURATION_MS = 1500;
+  private static readonly PARTICLE_RADIUS = 2.6;
+  private static readonly MAX_PARTICLES = 600;
+  private static readonly RATE_SMOOTH_ALPHA = 0.35; // EMA factor for rate updates
+  private static readonly RATE_DECAY_AFTER_MS = 1800; // after this long with no update, decay rate
+  private static readonly MIN_RATE_FOR_EMIT = 0.25; // particles/sec; below this, no emission
+  private static readonly MAX_RATE_PER_EDGE = 35; // cap to avoid melting the browser
+  private static readonly BLOOM_DURATION_MS = 700;
+  private static readonly BLOOM_MAX_RADIUS = 60;
 
   private paper: joint.dia.Paper | null = null;
   private overlayLayer: SVGGElement | null = null;
   private enabled = true;
-  private debug = true;
+  private debug = false;
 
-  private latestFieldsByOperator = new Map<string, string[]>();
-  private prevOutputCountByOperator = new Map<string, number>();
-  private inflightCountByLink = new Map<string, number>();
-  private lastPagRequestAt = new Map<string, number>();
-  private active: ActiveBubble[] = [];
+  private operatorOutputCount = new Map<string, number>();
+  private operatorRowsPerSec = new Map<string, number>();
+  private operatorLastUpdateAt = new Map<string, number>();
+  private edgeLastEmitAt = new Map<string, number>();
+
+  private particles: Particle[] = [];
+  private blooms: Bloom[] = [];
   private rafHandle: number | null = null;
-  private sendPatched = false;
 
   private subscriptions = new Subscription();
 
@@ -85,15 +87,12 @@ export class EdgeTupleAnimationService {
     private workflowActionService: WorkflowActionService,
     private executeWorkflowService: ExecuteWorkflowService
   ) {
-    // Expose the service on window for ad-hoc debugging:
-    //   edgeTuple.setDebug(true)
-    //   edgeTuple.dumpState()
     if (typeof window !== "undefined") (window as any).edgeTuple = this;
   }
 
   public setEnabled(on: boolean): void {
     this.enabled = on;
-    if (!on) this.clearAllBubbles();
+    if (!on) this.clearAll();
   }
 
   public isEnabled(): boolean {
@@ -102,81 +101,64 @@ export class EdgeTupleAnimationService {
 
   public setDebug(on: boolean): void {
     this.debug = on;
-    console.log("[edgeTuple] debug =", on);
   }
 
-  public dumpState(): {
-    enabled: boolean;
-    sendPatched: boolean;
-    cacheSize: number;
-    cache: Record<string, string[]>;
-    prevCounts: Record<string, number>;
-    activeBubbles: number;
-    inflightByLink: Record<string, number>;
-  } {
-    const cache: Record<string, string[]> = {};
-    for (const [k, v] of this.latestFieldsByOperator) cache[k] = v;
-    const prev: Record<string, number> = {};
-    for (const [k, v] of this.prevOutputCountByOperator) prev[k] = v;
-    const inflight: Record<string, number> = {};
-    for (const [k, v] of this.inflightCountByLink) inflight[k] = v;
+  public dumpState(): object {
     return {
       enabled: this.enabled,
-      sendPatched: this.sendPatched,
-      cacheSize: this.latestFieldsByOperator.size,
-      cache,
-      prevCounts: prev,
-      activeBubbles: this.active.length,
-      inflightByLink: inflight,
+      operators: Object.fromEntries(this.operatorRowsPerSec),
+      particles: this.particles.length,
+      blooms: this.blooms.length,
     };
   }
 
-  private log(...args: unknown[]): void {
-    if (this.debug) console.log("[edgeTuple]", ...args);
-  }
-
   public attachToPaper(paper: joint.dia.Paper): void {
-    if (this.paper === paper && this.overlayLayer && this.overlayLayer.isConnected) {
-      return;
-    }
-    this.clearAllBubbles();
+    if (this.paper === paper && this.overlayLayer && this.overlayLayer.isConnected) return;
+    this.clearAll();
     this.paper = paper;
+    this.ensureGlowFilter(paper.svg as SVGSVGElement);
     this.overlayLayer = this.createOverlayLayer(paper);
-    this.patchExecuteRequestOnce();
     this.subscribe();
   }
 
-  /**
-   * Inject all operator IDs into opsToViewResult on outgoing WorkflowExecuteRequest.
-   * Forces the backend to materialize results for every operator, so
-   * WebResultUpdateEvent fires for every op and the content cache stays warm.
-   * Idempotent — patches the websocket service's send method once.
-   */
-  private patchExecuteRequestOnce(): void {
-    if (this.sendPatched) return;
-    this.sendPatched = true;
-    const svc = this.workflowWebsocketService;
-    const original = svc.send.bind(svc);
-    const log = this.log.bind(this);
-    svc.send = (<T extends keyof any>(type: T, payload: any): void => {
-      if (type === "WorkflowExecuteRequest" && payload?.logicalPlan?.operators) {
-        const allIds: string[] = payload.logicalPlan.operators.map((o: { operatorID: string }) => o.operatorID);
-        const merged = new Set<string>(payload.logicalPlan.opsToViewResult ?? []);
-        for (const id of allIds) merged.add(id);
-        payload.logicalPlan.opsToViewResult = Array.from(merged);
-        log("patched WorkflowExecuteRequest, opsToViewResult =", payload.logicalPlan.opsToViewResult);
-      }
-      return original(type as any, payload);
-    }) as typeof svc.send;
-    this.log("send() patched");
+  private ensureGlowFilter(svg: SVGSVGElement): void {
+    let defs = svg.querySelector("defs") as SVGDefsElement | null;
+    if (!defs) {
+      defs = document.createElementNS(SVG_NS, "defs") as SVGDefsElement;
+      svg.insertBefore(defs, svg.firstChild);
+    }
+    if (defs.querySelector("#et-glow")) return;
+    const filter = document.createElementNS(SVG_NS, "filter");
+    filter.setAttribute("id", "et-glow");
+    filter.setAttribute("x", "-100%");
+    filter.setAttribute("y", "-100%");
+    filter.setAttribute("width", "300%");
+    filter.setAttribute("height", "300%");
+    const blur = document.createElementNS(SVG_NS, "feGaussianBlur");
+    blur.setAttribute("stdDeviation", "2.4");
+    blur.setAttribute("result", "blur");
+    const merge = document.createElementNS(SVG_NS, "feMerge");
+    const m1 = document.createElementNS(SVG_NS, "feMergeNode");
+    m1.setAttribute("in", "blur");
+    const m2 = document.createElementNS(SVG_NS, "feMergeNode");
+    m2.setAttribute("in", "blur");
+    const m3 = document.createElementNS(SVG_NS, "feMergeNode");
+    m3.setAttribute("in", "SourceGraphic");
+    merge.appendChild(m1);
+    merge.appendChild(m2);
+    merge.appendChild(m3);
+    filter.appendChild(blur);
+    filter.appendChild(merge);
+    defs.appendChild(filter);
   }
 
   private createOverlayLayer(paper: joint.dia.Paper): SVGGElement {
     const svg = paper.svg as SVGSVGElement;
     const cellsLayer = svg.querySelector(".joint-cells-layer") as SVGGElement | null;
     const host: SVGGElement | SVGSVGElement = cellsLayer ?? svg;
-    const layer = document.createElementNS(SVG_NS, "g") as SVGGElement;
+    const layer = document.createElementNS(SVG_NS, "g");
     layer.setAttribute("class", "tuple-animation-layer");
+    layer.setAttribute("filter", "url(#et-glow)");
     layer.style.pointerEvents = "none";
     host.appendChild(layer);
     return layer;
@@ -186,239 +168,78 @@ export class EdgeTupleAnimationService {
     this.subscriptions.unsubscribe();
     this.subscriptions = new Subscription();
 
-    // Content cache: WebResultUpdateEvent
-    // - WebDataUpdate (set/delta mode): inline table → cache directly.
-    // - WebPaginationUpdate (typical pipeline ops): no inline table → fire a paginated fetch.
-    this.subscriptions.add(
-      this.workflowWebsocketService.subscribeToEvent("WebResultUpdateEvent").subscribe(evt => {
-        const updates = (evt as any).updates as Record<string, unknown> | undefined;
-        this.log("WebResultUpdateEvent ops =", updates ? Object.keys(updates) : "(none)");
-        if (!updates) return;
-        for (const opId of Object.keys(updates)) {
-          const u = updates[opId];
-          if (!u) continue;
-          if (isWebDataUpdate(u as any) && Array.isArray((u as any).table) && (u as any).table.length > 0) {
-            const table = (u as any).table as IndexableObject[];
-            this.log("  WebDataUpdate", opId, "rows =", table.length, "lastRow =", table[table.length - 1]);
-            this.cacheFieldsForOp(opId, this.fieldsFromRow(table[table.length - 1]));
-          } else if (isWebPaginationUpdate(u as any) && (u as any).totalNumTuples > 0) {
-            this.log("  WebPaginationUpdate", opId, "totalNumTuples =", (u as any).totalNumTuples);
-            this.requestLatestTupleFor(opId, (u as any).totalNumTuples as number);
-          } else {
-            this.log("  skipped update", opId, "u =", u);
-          }
-        }
-      })
-    );
-
-    // Content cache: PaginatedResultEvent
-    this.subscriptions.add(
-      this.workflowWebsocketService.subscribeToEvent("PaginatedResultEvent").subscribe(evt => {
-        this.log("PaginatedResultEvent", evt.operatorID, "rows =", evt.table?.length ?? 0);
-        if (evt.table && evt.table.length > 0) {
-          this.cacheFieldsForOp(evt.operatorID, this.fieldsFromRow(evt.table[evt.table.length - 1] as IndexableObject));
-        }
-      })
-    );
-
-    // Content cache: pause-time current tuples
-    this.subscriptions.add(
-      this.workflowWebsocketService.subscribeToEvent("OperatorCurrentTuplesUpdateEvent").subscribe(evt => {
-        const sample = evt.tuples?.[0]?.tuple;
-        if (sample && sample.length > 0) {
-          this.cacheFieldsForOp(evt.operatorID, this.fieldsFromArray(sample));
-        }
-      })
-    );
-
-    // Timing trigger: per-operator output count delta
+    // Throughput source: per-operator output count.
     this.subscriptions.add(
       this.workflowStatusService.getStatusUpdateStream().subscribe(stats => {
         if (!this.enabled || !this.paper) return;
+        const now = performance.now();
         for (const opId of Object.keys(stats)) {
           const current = stats[opId].aggregatedOutputRowCount ?? 0;
-          const prev = this.prevOutputCountByOperator.get(opId) ?? 0;
+          const prev = this.operatorOutputCount.get(opId) ?? 0;
+          const prevAt = this.operatorLastUpdateAt.get(opId) ?? now;
+          this.operatorOutputCount.set(opId, current);
+          this.operatorLastUpdateAt.set(opId, now);
+
           const delta = current - prev;
-          this.prevOutputCountByOperator.set(opId, current);
-          if (delta <= 0) continue;
-          this.fireForOperator(opId, Math.min(delta, EdgeTupleAnimationService.MAX_SPAWN_PER_TICK));
+          const dtSec = Math.max((now - prevAt) / 1000, 0.001);
+          const instRate = delta / dtSec;
+          const prevSmooth = this.operatorRowsPerSec.get(opId) ?? 0;
+          const smoothed =
+            prevSmooth * (1 - EdgeTupleAnimationService.RATE_SMOOTH_ALPHA) +
+            instRate * EdgeTupleAnimationService.RATE_SMOOTH_ALPHA;
+          this.operatorRowsPerSec.set(opId, Math.max(0, smoothed));
+
+          if (delta > 0) this.triggerBloomFor(opId);
         }
+        this.ensureRafRunning();
       })
     );
 
-    // Reset state across runs
+    // Reset across runs.
     this.subscriptions.add(
       this.executeWorkflowService.getExecutionStateStream().subscribe(({ current }) => {
         if (current.state === ExecutionState.Initializing || current.state === ExecutionState.Uninitialized) {
-          this.clearAllBubbles();
-          this.prevOutputCountByOperator.clear();
-          this.latestFieldsByOperator.clear();
-          this.lastPagRequestAt.clear();
+          this.clearAll();
+          this.operatorOutputCount.clear();
+          this.operatorRowsPerSec.clear();
+          this.operatorLastUpdateAt.clear();
+          this.edgeLastEmitAt.clear();
         }
       })
     );
   }
 
-  /**
-   * Update the content cache and backfill any in-flight bubbles whose source
-   * operator just got fresh content, so dots become content pills mid-flight.
-   */
-  private cacheFieldsForOp(operatorID: string, fields: string[]): void {
-    if (fields.length === 0) return;
-    this.latestFieldsByOperator.set(operatorID, fields);
-    let backfilled = 0;
-    for (const b of this.active) {
-      if (b.sourceOperatorID !== operatorID) continue;
-      const newKey = fields.join(", ");
-      if (b.contentKey === newKey) continue;
-      this.replaceBubbleVisual(b, fields);
-      b.contentKey = newKey;
-      backfilled++;
-    }
-    this.log("cacheFieldsForOp", operatorID, "fields =", fields, "backfilled =", backfilled);
-  }
-
-  private fireForOperator(operatorID: string, count: number): void {
-    if (!this.paper) return;
-    const outLinks = this.workflowActionService.getTexeraGraph().getOutputLinksByOperatorId(operatorID);
-    if (outLinks.length === 0) return;
-    const fields = this.latestFieldsByOperator.get(operatorID);
-    this.log("fireForOperator", operatorID, "count =", count, "links =", outLinks.length, "hasContent =", !!fields);
-    for (const link of outLinks) {
-      const inflight = this.inflightCountByLink.get(link.linkID) ?? 0;
-      const room = EdgeTupleAnimationService.MAX_INFLIGHT_PER_LINK - inflight;
-      const toSpawn = Math.min(count, Math.max(room, 0));
-      for (let i = 0; i < toSpawn; i++) {
-        this.spawnBubble(link.linkID, operatorID, fields, i * EdgeTupleAnimationService.STAGGER_MS);
-      }
-    }
-  }
-
-  private spawnBubble(linkID: string, sourceOperatorID: string, fields: string[] | undefined, delayMs: number): void {
+  private triggerBloomFor(operatorID: string): void {
     if (!this.paper || !this.overlayLayer) return;
-    const jointLink = this.paper.getModelById(linkID) as joint.dia.Link | undefined;
-    if (!jointLink) return;
-    const linkView = this.paper.findViewByModel(jointLink) as joint.dia.LinkView | undefined;
-    if (!linkView || !linkView.el) return;
-    const pathEl = linkView.el.querySelector(".connection") as SVGPathElement | null;
-    if (!pathEl) return;
+    const element = this.paper.getModelById(operatorID) as joint.dia.Element | undefined;
+    if (!element) return;
+    const bbox = element.getBBox();
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    const color = this.colorForOperator(operatorID);
 
-    let pathLen = 0;
-    try {
-      pathLen = pathEl.getTotalLength();
-    } catch {
-      return;
-    }
-    if (pathLen < 1) return;
+    const c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("cx", String(cx));
+    c.setAttribute("cy", String(cy));
+    c.setAttribute("r", "0");
+    c.setAttribute("fill", "none");
+    c.setAttribute("stroke", color);
+    c.setAttribute("stroke-width", "2.5");
+    c.setAttribute("opacity", "0.9");
+    this.overlayLayer.appendChild(c);
 
-    const g = document.createElementNS(SVG_NS, "g") as SVGGElement;
-    g.setAttribute("class", "tuple-bubble");
-    g.setAttribute("opacity", "0");
-    this.renderBubbleVisual(g, fields ?? []);
-    this.overlayLayer.appendChild(g);
-
-    const bubble: ActiveBubble = {
-      el: g,
-      start: performance.now() + delayMs,
-      duration: EdgeTupleAnimationService.BUBBLE_DURATION_MS,
-      pathEl,
-      pathLen,
-      linkID,
-      sourceOperatorID,
-      contentKey: fields && fields.length > 0 ? fields.join(", ") : "",
-    };
-    this.active.push(bubble);
-    this.inflightCountByLink.set(linkID, (this.inflightCountByLink.get(linkID) ?? 0) + 1);
-    this.ensureRafRunning();
-  }
-
-  /**
-   * Replace a bubble's inner visual without unmounting the outer `<g>` so the
-   * in-flight animation transform continues uninterrupted.
-   */
-  private replaceBubbleVisual(bubble: ActiveBubble, fields: string[]): void {
-    while (bubble.el.firstChild) bubble.el.removeChild(bubble.el.firstChild);
-    this.renderBubbleVisual(bubble.el, fields);
-  }
-
-  /**
-   * Render mode by field count:
-   *   0 → small filled circle ("dot")
-   *   1 → plain text (no background)
-   *   2+ → rounded-rect pill with white text
-   */
-  private renderBubbleVisual(g: SVGGElement, fields: string[]): void {
-    if (fields.length === 0) {
-      const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("r", "3.5");
-      dot.setAttribute("cx", "0");
-      dot.setAttribute("cy", "0");
-      dot.setAttribute("fill", "#1976d2");
-      g.appendChild(dot);
-      return;
-    }
-
-    const text = this.truncate(fields.join(", "), EdgeTupleAnimationService.MAX_TEXT_LEN);
-
-    if (fields.length === 1) {
-      // Bare text — no background pill, only the value.
-      const t = document.createElementNS(SVG_NS, "text");
-      t.setAttribute("x", "0");
-      t.setAttribute("y", "0");
-      t.setAttribute("text-anchor", "middle");
-      t.setAttribute("dominant-baseline", "central");
-      t.setAttribute("font-family", "Roboto, Arial, sans-serif");
-      t.setAttribute("font-size", "12");
-      t.setAttribute("font-weight", "600");
-      t.setAttribute("fill", "#0d47a1");
-      t.setAttribute("paint-order", "stroke");
-      t.setAttribute("stroke", "#ffffff");
-      t.setAttribute("stroke-width", "3");
-      t.setAttribute("stroke-linejoin", "round");
-      t.style.userSelect = "none";
-      t.textContent = text;
-      g.appendChild(t);
-      return;
-    }
-
-    // Pill — multiple fields.
-    const padding = 8;
-    const approxCharW = 6.6;
-    const w = Math.max(22, text.length * approxCharW + padding * 2);
-    const h = 18;
-
-    const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("x", String(-w / 2));
-    rect.setAttribute("y", String(-h / 2));
-    rect.setAttribute("width", String(w));
-    rect.setAttribute("height", String(h));
-    rect.setAttribute("rx", "9");
-    rect.setAttribute("ry", "9");
-    rect.setAttribute("fill", "#1976d2");
-    rect.setAttribute("stroke", "#0d47a1");
-    rect.setAttribute("stroke-width", "0.6");
-
-    const t = document.createElementNS(SVG_NS, "text");
-    t.setAttribute("x", "0");
-    t.setAttribute("y", "0");
-    t.setAttribute("text-anchor", "middle");
-    t.setAttribute("dominant-baseline", "central");
-    t.setAttribute("font-family", "Roboto, Arial, sans-serif");
-    t.setAttribute("font-size", "11");
-    t.setAttribute("font-weight", "600");
-    t.setAttribute("fill", "#ffffff");
-    t.style.userSelect = "none";
-    t.textContent = text;
-
-    g.appendChild(rect);
-    g.appendChild(t);
+    this.blooms.push({
+      el: c,
+      start: performance.now(),
+      duration: EdgeTupleAnimationService.BLOOM_DURATION_MS,
+    });
   }
 
   private ensureRafRunning(): void {
     if (this.rafHandle !== null) return;
     const step = (now: number) => {
       this.tick(now);
-      if (this.active.length > 0) {
+      if (this.shouldKeepAnimating()) {
         this.rafHandle = requestAnimationFrame(step);
       } else {
         this.rafHandle = null;
@@ -427,98 +248,158 @@ export class EdgeTupleAnimationService {
     this.rafHandle = requestAnimationFrame(step);
   }
 
+  private shouldKeepAnimating(): boolean {
+    if (this.particles.length > 0 || this.blooms.length > 0) return true;
+    for (const rate of this.operatorRowsPerSec.values()) {
+      if (rate >= EdgeTupleAnimationService.MIN_RATE_FOR_EMIT) return true;
+    }
+    return false;
+  }
+
   private tick(now: number): void {
-    for (let i = this.active.length - 1; i >= 0; i--) {
-      const b = this.active[i];
-      const elapsed = now - b.start;
+    if (!this.enabled) return;
+    this.decayRates(now);
+    this.emitForActiveEdges(now);
+    this.advanceParticles(now);
+    this.advanceBlooms(now);
+  }
+
+  private decayRates(now: number): void {
+    for (const [opId, lastAt] of this.operatorLastUpdateAt) {
+      const idle = now - lastAt;
+      if (idle <= EdgeTupleAnimationService.RATE_DECAY_AFTER_MS) continue;
+      const rate = this.operatorRowsPerSec.get(opId) ?? 0;
+      if (rate <= 0) continue;
+      // Exponential decay once idle.
+      this.operatorRowsPerSec.set(opId, rate * 0.85);
+    }
+  }
+
+  private emitForActiveEdges(now: number): void {
+    if (!this.paper || !this.overlayLayer) return;
+    if (this.particles.length >= EdgeTupleAnimationService.MAX_PARTICLES) return;
+
+    const links = this.workflowActionService.getTexeraGraph().getAllLinks();
+    for (const link of links) {
+      const sourceOp = link.source.operatorID;
+      const rateRaw = this.operatorRowsPerSec.get(sourceOp) ?? 0;
+      if (rateRaw < EdgeTupleAnimationService.MIN_RATE_FOR_EMIT) continue;
+      const rate = Math.min(rateRaw, EdgeTupleAnimationService.MAX_RATE_PER_EDGE);
+      const intervalMs = 1000 / rate;
+      const last = this.edgeLastEmitAt.get(link.linkID) ?? -Infinity;
+      const elapsed = now - last;
+      if (elapsed < intervalMs) continue;
+      // Possibly emit multiple particles to catch up after a busy frame.
+      const toEmit = Math.min(Math.floor(elapsed / intervalMs), 3);
+      for (let i = 0; i < toEmit; i++) {
+        this.emitParticle(link.linkID, sourceOp, now - elapsed + (i + 1) * intervalMs);
+        if (this.particles.length >= EdgeTupleAnimationService.MAX_PARTICLES) break;
+      }
+      this.edgeLastEmitAt.set(link.linkID, now);
+    }
+  }
+
+  private emitParticle(linkID: string, sourceOperatorID: string, startAt: number): void {
+    if (!this.paper || !this.overlayLayer) return;
+    const jointLink = this.paper.getModelById(linkID) as joint.dia.Link | undefined;
+    if (!jointLink) return;
+    const linkView = this.paper.findViewByModel(jointLink) as joint.dia.LinkView | undefined;
+    if (!linkView || !linkView.el) return;
+    const pathEl = linkView.el.querySelector(".connection") as SVGPathElement | null;
+    if (!pathEl) return;
+    let pathLen = 0;
+    try {
+      pathLen = pathEl.getTotalLength();
+    } catch {
+      return;
+    }
+    if (pathLen < 1) return;
+
+    const color = this.colorForOperator(sourceOperatorID);
+    const c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("r", String(EdgeTupleAnimationService.PARTICLE_RADIUS));
+    c.setAttribute("cx", "0");
+    c.setAttribute("cy", "0");
+    c.setAttribute("fill", color);
+    c.setAttribute("opacity", "0");
+    this.overlayLayer.appendChild(c);
+
+    // Slight randomization for organic feel.
+    const jitter = 0.85 + Math.random() * 0.3; // 0.85x – 1.15x duration
+    this.particles.push({
+      el: c,
+      start: startAt,
+      duration: EdgeTupleAnimationService.PARTICLE_DURATION_MS * jitter,
+      pathEl,
+      pathLen,
+      linkID,
+    });
+  }
+
+  private advanceParticles(now: number): void {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      const elapsed = now - p.start;
       if (elapsed < 0) continue;
-      const t = Math.min(1, elapsed / b.duration);
+      const t = Math.min(1, elapsed / p.duration);
       let pt: { x: number; y: number };
       try {
-        pt = b.pathEl.getPointAtLength(t * b.pathLen);
+        pt = p.pathEl.getPointAtLength(t * p.pathLen);
       } catch {
-        this.disposeBubble(i);
+        this.disposeParticle(i);
         continue;
       }
-      let opacity = 0.95;
-      if (t < 0.18) opacity = 0.95 * (t / 0.18);
-      else if (t > 0.82) opacity = 0.95 * ((1 - t) / 0.18);
-      b.el.setAttribute("transform", `translate(${pt.x},${pt.y})`);
+      let opacity = 1;
+      if (t < 0.1) opacity = t / 0.1;
+      else if (t > 0.85) opacity = (1 - t) / 0.15;
+      p.el.setAttribute("transform", `translate(${pt.x},${pt.y})`);
+      p.el.setAttribute("opacity", String(opacity));
+      if (t >= 1) this.disposeParticle(i);
+    }
+  }
+
+  private advanceBlooms(now: number): void {
+    for (let i = this.blooms.length - 1; i >= 0; i--) {
+      const b = this.blooms[i];
+      const t = Math.min(1, (now - b.start) / b.duration);
+      const r = EdgeTupleAnimationService.BLOOM_MAX_RADIUS * t;
+      const opacity = (1 - t) * 0.9;
+      b.el.setAttribute("r", String(r));
       b.el.setAttribute("opacity", String(opacity));
-      if (t >= 1) this.disposeBubble(i);
+      if (t >= 1) this.disposeBloom(i);
     }
   }
 
-  private disposeBubble(index: number): void {
-    const b = this.active[index];
+  private disposeParticle(index: number): void {
+    const p = this.particles[index];
+    p.el.parentNode?.removeChild(p.el);
+    this.particles.splice(index, 1);
+  }
+
+  private disposeBloom(index: number): void {
+    const b = this.blooms[index];
     b.el.parentNode?.removeChild(b.el);
-    this.active.splice(index, 1);
-    const cur = this.inflightCountByLink.get(b.linkID) ?? 0;
-    if (cur <= 1) this.inflightCountByLink.delete(b.linkID);
-    else this.inflightCountByLink.set(b.linkID, cur - 1);
+    this.blooms.splice(index, 1);
   }
 
-  private clearAllBubbles(): void {
-    for (const b of this.active) {
-      b.el.parentNode?.removeChild(b.el);
-    }
-    this.active = [];
-    this.inflightCountByLink.clear();
+  private clearAll(): void {
+    for (const p of this.particles) p.el.parentNode?.removeChild(p.el);
+    for (const b of this.blooms) b.el.parentNode?.removeChild(b.el);
+    this.particles = [];
+    this.blooms = [];
     if (this.rafHandle !== null) {
       cancelAnimationFrame(this.rafHandle);
       this.rafHandle = null;
     }
   }
 
-  /**
-   * Send a paginated fetch for op X's last page so we get an actual row to cache.
-   * Rate-limited per operator. The result panel uses requestID correlation, so
-   * our requests don't collide with its in-flight requests; both subscribers
-   * receive PaginatedResultEvent.
-   */
-  private requestLatestTupleFor(operatorID: string, totalNumTuples: number): void {
-    const now = performance.now();
-    const last = this.lastPagRequestAt.get(operatorID) ?? -Infinity;
-    if (now - last < EdgeTupleAnimationService.PAG_REQUEST_INTERVAL_MS) {
-      this.log("requestLatestTupleFor", operatorID, "skipped (rate-limited)");
-      return;
+  private colorForOperator(opId: string): string {
+    // Deterministic hue from operator ID — sibling streams stay visually distinct.
+    let h = 0;
+    for (let i = 0; i < opId.length; i++) {
+      h = ((h << 5) - h + opId.charCodeAt(i)) | 0;
     }
-    this.lastPagRequestAt.set(operatorID, now);
-    const pageSize = 1;
-    const lastPage = Math.max(1, Math.ceil(totalNumTuples / pageSize));
-    this.log("requestLatestTupleFor", operatorID, "pageIndex =", lastPage, "pageSize =", pageSize);
-    this.workflowWebsocketService.send("ResultPaginationRequest", {
-      requestID: `edge-tuple-${operatorID}-${Math.floor(now)}`,
-      operatorID,
-      pageIndex: lastPage,
-      pageSize,
-    });
-  }
-
-  private fieldsFromRow(row: IndexableObject): string[] {
-    const values: string[] = [];
-    for (const k of Object.keys(row)) {
-      const v = (row as Record<string, unknown>)[k];
-      if (v === null || v === undefined) continue;
-      const s = String(v);
-      if (s === "" || s === "NULL") continue;
-      values.push(s);
-      if (values.length >= EdgeTupleAnimationService.MAX_FIELDS_IN_BUBBLE) break;
-    }
-    return values;
-  }
-
-  private fieldsFromArray(fields: ReadonlyArray<string>): string[] {
-    const values: string[] = [];
-    for (const f of fields) {
-      if (!f || f === "NULL") continue;
-      values.push(f);
-      if (values.length >= EdgeTupleAnimationService.MAX_FIELDS_IN_BUBBLE) break;
-    }
-    return values;
-  }
-
-  private truncate(s: string, n: number): string {
-    return s.length <= n ? s : s.slice(0, n - 1) + "…";
+    const hue = ((h % 360) + 360) % 360;
+    return `hsl(${hue}, 100%, 65%)`;
   }
 }
