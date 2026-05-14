@@ -413,3 +413,120 @@ hr {
     }
   }
 }
+
+/* ===========================================================================
+   Tron Theme — toggled via `document.body.classList.toggle("theme-tron")`
+   from the thunderbolt button in the workflow editor menu. The whole UI
+   flips to a dark + neon aesthetic when the class is present. Global
+   selectors here override JointJS SVG attributes (set via `attrs(...)`)
+   which is why most rules need `!important`.
+   =========================================================================== */
+body.theme-tron {
+  background-color: #050818;
+
+  /* ---- Workflow canvas ---- */
+  #workflow-editor,
+  #workflow-editor-wrapper {
+    background-color: #050818 !important;
+  }
+
+  /* JointJS paper itself sets inline background-color; override it. */
+  .joint-paper {
+    background-color: #050818 !important;
+  }
+
+  /* ---- Operator bodies ---- */
+  .joint-element rect.body,
+  .joint-element .body {
+    fill: #0d1530 !important;
+    stroke: #00e5ff !important;
+    stroke-width: 1.4 !important;
+    filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.85));
+  }
+
+  /* Operator labels and ports */
+  .joint-element text {
+    fill: #d6f8ff !important;
+  }
+  .joint-element .texera-operator-state,
+  .joint-element .texera-operator-port-metrics,
+  .joint-element .texera-operator-name {
+    fill: #d6f8ff !important;
+  }
+
+  /* Operator ports (the little circles on the sides) */
+  .joint-element circle.port-body,
+  .joint-element .port-body {
+    fill: #0d1530 !important;
+    stroke: #00e5ff !important;
+  }
+
+  /* ---- Edges ---- */
+  .joint-link .connection {
+    stroke: #00e5ff !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 0 3px rgba(0, 229, 255, 0.9));
+  }
+  .joint-link .marker-source,
+  .joint-link .marker-target,
+  .joint-link .marker-arrowhead {
+    fill: #00e5ff !important;
+    stroke: #00e5ff !important;
+  }
+
+  /* ---- Top menu bar ---- */
+  texera-menu,
+  texera-menu .ant-layout-header,
+  texera-menu nz-header {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+    border-bottom: 1px solid #1a2e5c;
+  }
+
+  /* All ant-design buttons in the chrome */
+  .ant-btn {
+    background-color: #0d1530 !important;
+    color: #d6f8ff !important;
+    border-color: #1a2e5c !important;
+  }
+  .ant-btn:hover,
+  .ant-btn:focus {
+    background-color: #14224a !important;
+    color: #00ffff !important;
+    border-color: #00e5ff !important;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+  }
+  .ant-btn[disabled],
+  .ant-btn[disabled]:hover {
+    background-color: #0a0f24 !important;
+    color: #3a4a78 !important;
+    border-color: #1a2e5c !important;
+    box-shadow: none;
+  }
+
+  /* Side panels and result panel — anything ant-layout-based */
+  .ant-layout,
+  .ant-layout-sider,
+  .ant-layout-content {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+  }
+  .ant-layout-sider-children {
+    background-color: #08102a !important;
+  }
+
+  /* Tabs / dropdowns shown in dark panels */
+  .ant-tabs-tab,
+  .ant-tabs-nav,
+  .ant-menu {
+    background-color: #08102a !important;
+    color: #d6f8ff !important;
+  }
+  .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+    color: #00e5ff !important;
+  }
+  .ant-tabs-ink-bar {
+    background: #00e5ff !important;
+  }
+}
+

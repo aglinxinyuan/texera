@@ -653,6 +653,14 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Toggle the Tron theme by flipping a class on document.body. All Tron-specific
+   * overrides live in src/styles.scss under the `body.theme-tron` selector.
+   */
+  public onClickToggleTronTheme(): void {
+    document.body.classList.toggle("theme-tron");
+  }
+
+  /**
    * Calls Markdown Description Component
    */
   public onClickEditDescription(): void {
