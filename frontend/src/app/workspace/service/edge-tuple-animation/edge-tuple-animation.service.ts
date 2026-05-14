@@ -43,25 +43,29 @@ interface Bloom {
   duration: number;
 }
 
+interface EmitEntry {
+  emitAt: number;
+  sourceOperatorID: string;
+}
+
 /**
- * "Particle Storm" edge animation.
+ * "Particle Storm" edge animation — one particle per tuple.
  *
- * Every edge continuously emits glowing particles along its path while the
- * workflow runs. Emission rate per edge tracks the source operator's recent
- * rows/sec, smoothed and decayed. Each operator pulses a colored bloom ring
- * whenever it ships a batch. Particles inherit a deterministic hue from their
- * source operator ID so streams from different sources stay visually distinct
- * even where they converge.
+ * For every Δ tuples reported by OperatorStatisticsUpdateEvent on operator X,
+ * Δ particles are scheduled on each outgoing edge of X, staggered across an
+ * adaptive window so they read as continuous flow rather than instant bursts.
+ * Particles inherit a deterministic hue from their source operator's ID, so
+ * streams from different sources stay visually distinct where they converge.
+ * Each operator pulses a colored bloom ring whenever it ships a batch.
  */
 @Injectable({ providedIn: "root" })
 export class EdgeTupleAnimationService {
   private static readonly PARTICLE_DURATION_MS = 1500;
   private static readonly PARTICLE_RADIUS = 2.6;
-  private static readonly MAX_PARTICLES = 600;
-  private static readonly RATE_SMOOTH_ALPHA = 0.35; // EMA factor for rate updates
-  private static readonly RATE_DECAY_AFTER_MS = 1800; // after this long with no update, decay rate
-  private static readonly MIN_RATE_FOR_EMIT = 0.25; // particles/sec; below this, no emission
-  private static readonly MAX_RATE_PER_EDGE = 35; // cap to avoid melting the browser
+  private static readonly MAX_PARTICLES = 1200; // hard cap to protect the browser
+  private static readonly EMIT_WINDOW_MIN_MS = 200;
+  private static readonly EMIT_WINDOW_MAX_MS = 1500;
+  private static readonly EMIT_WINDOW_PER_PARTICLE_MS = 30;
   private static readonly BLOOM_DURATION_MS = 700;
   private static readonly BLOOM_MAX_RADIUS = 60;
 
@@ -71,9 +75,7 @@ export class EdgeTupleAnimationService {
   private debug = false;
 
   private operatorOutputCount = new Map<string, number>();
-  private operatorRowsPerSec = new Map<string, number>();
-  private operatorLastUpdateAt = new Map<string, number>();
-  private edgeLastEmitAt = new Map<string, number>();
+  private edgeEmitQueue = new Map<string, EmitEntry[]>(); // linkID → ascending emit times
 
   private particles: Particle[] = [];
   private blooms: Bloom[] = [];
@@ -104,9 +106,12 @@ export class EdgeTupleAnimationService {
   }
 
   public dumpState(): object {
+    const queues: Record<string, number> = {};
+    for (const [k, v] of this.edgeEmitQueue) queues[k] = v.length;
     return {
       enabled: this.enabled,
-      operators: Object.fromEntries(this.operatorRowsPerSec),
+      operators: Object.fromEntries(this.operatorOutputCount),
+      pendingByEdge: queues,
       particles: this.particles.length,
       blooms: this.blooms.length,
     };
@@ -168,7 +173,8 @@ export class EdgeTupleAnimationService {
     this.subscriptions.unsubscribe();
     this.subscriptions = new Subscription();
 
-    // Throughput source: per-operator output count.
+    // Delta source: for every Δ tuples an operator emits, schedule Δ particles
+    // on each outgoing edge, staggered for visible flow.
     this.subscriptions.add(
       this.workflowStatusService.getStatusUpdateStream().subscribe(stats => {
         if (!this.enabled || !this.paper) return;
@@ -176,20 +182,11 @@ export class EdgeTupleAnimationService {
         for (const opId of Object.keys(stats)) {
           const current = stats[opId].aggregatedOutputRowCount ?? 0;
           const prev = this.operatorOutputCount.get(opId) ?? 0;
-          const prevAt = this.operatorLastUpdateAt.get(opId) ?? now;
           this.operatorOutputCount.set(opId, current);
-          this.operatorLastUpdateAt.set(opId, now);
-
           const delta = current - prev;
-          const dtSec = Math.max((now - prevAt) / 1000, 0.001);
-          const instRate = delta / dtSec;
-          const prevSmooth = this.operatorRowsPerSec.get(opId) ?? 0;
-          const smoothed =
-            prevSmooth * (1 - EdgeTupleAnimationService.RATE_SMOOTH_ALPHA) +
-            instRate * EdgeTupleAnimationService.RATE_SMOOTH_ALPHA;
-          this.operatorRowsPerSec.set(opId, Math.max(0, smoothed));
-
-          if (delta > 0) this.triggerBloomFor(opId);
+          if (delta <= 0) continue;
+          this.scheduleEmissions(opId, delta, now);
+          this.triggerBloomFor(opId);
         }
         this.ensureRafRunning();
       })
@@ -201,12 +198,42 @@ export class EdgeTupleAnimationService {
         if (current.state === ExecutionState.Initializing || current.state === ExecutionState.Uninitialized) {
           this.clearAll();
           this.operatorOutputCount.clear();
-          this.operatorRowsPerSec.clear();
-          this.operatorLastUpdateAt.clear();
-          this.edgeLastEmitAt.clear();
+          this.edgeEmitQueue.clear();
         }
       })
     );
+  }
+
+  /**
+   * Append `count` emission timestamps to each outgoing edge's queue. Particles
+   * are spread over an adaptive window (~30ms each, clamped 200–1500ms total),
+   * so visually you read continuous flow rather than instant bursts. If a queue
+   * still has pending entries from a previous update, the new ones append after
+   * the tail so two back-to-back deltas don't overlap into one visual burst.
+   */
+  private scheduleEmissions(operatorID: string, count: number, now: number): void {
+    if (!this.paper) return;
+    const outLinks = this.workflowActionService.getTexeraGraph().getOutputLinksByOperatorId(operatorID);
+    if (outLinks.length === 0) return;
+
+    const windowMs = Math.min(
+      EdgeTupleAnimationService.EMIT_WINDOW_MAX_MS,
+      Math.max(EdgeTupleAnimationService.EMIT_WINDOW_MIN_MS, count * EdgeTupleAnimationService.EMIT_WINDOW_PER_PARTICLE_MS)
+    );
+    const intervalMs = count > 1 ? windowMs / count : 0;
+
+    for (const link of outLinks) {
+      let queue = this.edgeEmitQueue.get(link.linkID);
+      if (!queue) {
+        queue = [];
+        this.edgeEmitQueue.set(link.linkID, queue);
+      }
+      const tail = queue.length > 0 ? queue[queue.length - 1].emitAt : now;
+      const startAt = Math.max(tail + intervalMs, now);
+      for (let i = 0; i < count; i++) {
+        queue.push({ emitAt: startAt + i * intervalMs, sourceOperatorID: operatorID });
+      }
+    }
   }
 
   private triggerBloomFor(operatorID: string): void {
@@ -250,52 +277,34 @@ export class EdgeTupleAnimationService {
 
   private shouldKeepAnimating(): boolean {
     if (this.particles.length > 0 || this.blooms.length > 0) return true;
-    for (const rate of this.operatorRowsPerSec.values()) {
-      if (rate >= EdgeTupleAnimationService.MIN_RATE_FOR_EMIT) return true;
+    for (const q of this.edgeEmitQueue.values()) {
+      if (q.length > 0) return true;
     }
     return false;
   }
 
   private tick(now: number): void {
     if (!this.enabled) return;
-    this.decayRates(now);
-    this.emitForActiveEdges(now);
+    this.drainEmitQueues(now);
     this.advanceParticles(now);
     this.advanceBlooms(now);
   }
 
-  private decayRates(now: number): void {
-    for (const [opId, lastAt] of this.operatorLastUpdateAt) {
-      const idle = now - lastAt;
-      if (idle <= EdgeTupleAnimationService.RATE_DECAY_AFTER_MS) continue;
-      const rate = this.operatorRowsPerSec.get(opId) ?? 0;
-      if (rate <= 0) continue;
-      // Exponential decay once idle.
-      this.operatorRowsPerSec.set(opId, rate * 0.85);
-    }
-  }
-
-  private emitForActiveEdges(now: number): void {
+  /**
+   * Pop and emit every queue entry whose scheduled time has arrived. The
+   * queue is ordered by emit time, so we stop at the first not-yet-due entry.
+   */
+  private drainEmitQueues(now: number): void {
     if (!this.paper || !this.overlayLayer) return;
-    if (this.particles.length >= EdgeTupleAnimationService.MAX_PARTICLES) return;
-
-    const links = this.workflowActionService.getTexeraGraph().getAllLinks();
-    for (const link of links) {
-      const sourceOp = link.source.operatorID;
-      const rateRaw = this.operatorRowsPerSec.get(sourceOp) ?? 0;
-      if (rateRaw < EdgeTupleAnimationService.MIN_RATE_FOR_EMIT) continue;
-      const rate = Math.min(rateRaw, EdgeTupleAnimationService.MAX_RATE_PER_EDGE);
-      const intervalMs = 1000 / rate;
-      const last = this.edgeLastEmitAt.get(link.linkID) ?? -Infinity;
-      const elapsed = now - last;
-      if (elapsed < intervalMs) continue;
-      // Possibly emit multiple particles to catch up after a busy frame.
-      const toEmit = Math.min(Math.floor(elapsed / intervalMs), 3);
-      for (let i = 0; i < toEmit; i++) {
-        this.emitParticle(link.linkID, sourceOp, now - elapsed + (i + 1) * intervalMs);
-        if (this.particles.length >= EdgeTupleAnimationService.MAX_PARTICLES) break;
+    for (const [linkID, queue] of this.edgeEmitQueue) {
+      while (queue.length > 0 && queue[0].emitAt <= now) {
+        const entry = queue.shift() as EmitEntry;
+        if (this.particles.length >= EdgeTupleAnimationService.MAX_PARTICLES) {
+          // Drop silently when we'd overshoot the cap; queue still drains.
+          continue;
+        }
+        this.emitParticle(linkID, entry.sourceOperatorID, now);
       }
-      this.edgeLastEmitAt.set(link.linkID, now);
     }
   }
 
