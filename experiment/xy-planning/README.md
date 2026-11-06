@@ -161,3 +161,30 @@ Run `python -I experiment/xy-planning/test_module_oracle.py` for small weighted
 branch/bypass cross-checks and rejection tests for invalid boundaries and cycles.
 All physical manifests, selected cut sets, exact minima, assignment counts and
 per-JVM samples are saved; no cases or GC samples are dropped.
+
+## Aggregation-heavy and join-heavy estimates
+
+Run the same six graphs with two predeclared 8:1 sensitivity profiles:
+
+```powershell
+./experiment/xy-planning/run-compiled.ps1 -Suite native-weighted -UniformReference target/xy-planning-native-large/20261105-191504
+```
+
+`-UniformReference` must point to the saved native-large run (the worklog's
+archived data directory also works). Aggregation-heavy gives both local/global
+aggregate stages weight8; join-heavy gives both build/probe stages weight8.
+All other physical operators remain1 and Y's macro remains0. These are fixed
+hypothetical estimates, not measured operator times. Both strategies receive
+the identical map. The graphs, source data, primitive code and blocking ports
+are unchanged. The analyzer compares logical JSON and every physical manifest
+field except the estimates/case names against the reference run, and checks
+the exact declared weights independently of the Scala layer-based assignment.
+
+The default protocol is unchanged: three JVMs,20 warm-up pairs and100 measured
+pairs per graph/profile/JVM (7200 plans), pruning on throughout. Complete Y
+decomposition and reconstruction remain timed. The same independent exact
+module oracle verifies all12 minima and all returned plans, with whole-graph
+cross-checks on the smallest two sizes in each profile. Output is under
+`target/xy-planning-native-weighted/<timestamp>/`. The saved uniform reference
+files and source files are SHA256-pinned throughout the run. No workflow
+execution, production scheduling change or manuscript edit is involved.

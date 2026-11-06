@@ -23,8 +23,10 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeWeightedXYSpec extends AnyFlatSpec {
   import XYPlanningComparison._
-  for ((inside, outside) <- NativeBranchXYFixtures.sizes;
-       profile <- Vector("aggregation-heavy", "join-heavy")) {
+  for (
+    (inside, outside) <- NativeBranchXYFixtures.sizes;
+    profile <- Vector("aggregation-heavy", "join-heavy")
+  ) {
     "Native weighted X/Y" should s"preserve the $inside/$outside graph and minimize $profile costs" in {
       val base = NativeBranchXYFixtures.compile(inside, outside)
       val weighted = NativeWeightedXYFixtures.withProfile(base, profile)
@@ -36,7 +38,9 @@ class NativeWeightedXYSpec extends AnyFlatSpec {
       assert(estimates.keySet == base.input.weights.keySet)
       assert(estimates.values.count(_ == 8.0) == 2 * (inside + outside))
       for ((id, estimate) <- estimates) {
-        val heavy = id.logicalOpId.id.contains(if (profile == "aggregation-heavy") "-aggregate-" else "-join-")
+        val heavy = id.logicalOpId.id.contains(
+          if (profile == "aggregation-heavy") "-aggregate-" else "-join-"
+        )
         assert(estimate == (if (heavy) 8.0 else 1.0))
       }
       val x = searchX(weighted.input, pruning = true)
@@ -52,7 +56,8 @@ class NativeWeightedXYSpec extends AnyFlatSpec {
   }
   it should "reject an unknown profile instead of silently using uniform costs" in {
     val base = NativeBranchXYFixtures.compile(1, 1)
-    val error = intercept[IllegalArgumentException](NativeWeightedXYFixtures.withProfile(base, "typo"))
+    val error =
+      intercept[IllegalArgumentException](NativeWeightedXYFixtures.withProfile(base, "typo"))
     assert(error.getMessage.contains("unknown cost profile"))
   }
 }

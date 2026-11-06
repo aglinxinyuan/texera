@@ -30,6 +30,23 @@ def rows(path):
         return list(csv.DictReader(stream))
 
 
+def validate_weighted_snapshot(name, ops, edges, reference_ops, reference_edges):
+    profile, base = name.split('__')
+    assert profile in {'aggregation-heavy','join-heavy'}, 'unknown cost profile'
+    assert reference_ops and reference_edges
+    assert all(r['case'] == base for r in reference_ops + reference_edges)
+    assert all(r['case'] == name for r in ops + edges)
+    def stripped(records, omit):
+        return sorted(json.dumps({k:v for k,v in r.items() if k not in omit},sort_keys=True) for r in records)
+    assert stripped(ops, {'case','estimate'}) == stripped(reference_ops, {'case','estimate'}), 'operator metadata changed'
+    assert stripped(edges, {'case'}) == stripped(reference_edges, {'case'}), 'edges or blocking declarations changed'
+    assert all(float(r['estimate']) == 1 for r in reference_ops), 'reference is not uniform'
+    marker = '-aggregate-' if profile == 'aggregation-heavy' else '-join-'
+    for row in ops:
+        expected = 8 if marker in row['operator'].split('/')[0] else 1
+        assert float(row['estimate']) == expected, 'incorrect profile estimate'
+
+
 def analyze(root):
     spec = importlib.util.spec_from_file_location('xy_oracle', Path(__file__).with_name('oracle.py'))
     oracle = importlib.util.module_from_spec(spec)
@@ -37,7 +54,11 @@ def analyze(root):
     metadata = json.loads((root/'metadata.json').read_text(encoding='utf-8-sig'))
     expected_cases = set(metadata.get('cases', ['kmeans','files','branching-files']))
     native = metadata.get('suite', '').startswith('native')
-    large = metadata.get('suite') == 'native-large'
+    weighted = metadata.get('suite') == 'native-weighted'
+    large = metadata.get('suite') in {'native-large','native-weighted'}
+    if weighted:
+        reference = Path(metadata['uniform_reference'])/'fork-0'
+        reference_ops, reference_edges = rows(reference/'operators.csv'), rows(reference/'edges.csv')
     module_spec = importlib.util.spec_from_file_location('module_oracle', Path(__file__).with_name('module-oracle.py'))
     module_oracle = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(module_oracle)
@@ -50,6 +71,12 @@ def analyze(root):
         for name in sorted({r['case'] for r in ops}):
             selected_ops = sorted((r for r in ops if r['case'] == name), key=lambda r:r['operator'])
             selected_edges = [r for r in edge_rows if r['case'] == name]
+            if weighted:
+                _,base = name.split('__')
+                validate_weighted_snapshot(name, selected_ops, selected_edges,
+                    [r for r in reference_ops if r['case']==base],
+                    [r for r in reference_edges if r['case']==base])
+                assert json.loads((folder/f'{name}.logical.json').read_text(encoding='utf-8-sig')) == json.loads((reference/f'{base}.logical.json').read_text(encoding='utf-8-sig')), 'logical workflow changed'
             current[name] = (selected_ops, selected_edges)
         if graphs:
             assert current == graphs, 'compiled graphs changed across JVMs'
@@ -123,7 +150,8 @@ def analyze(root):
     ])
     lines += ['', '## Interpretation and scope', '',
         'Inspect the remaining search states and decomposition/reconstruction costs before generalizing the timing result. Physical graph size and real blocking dependencies matter together.',
-        'Cost is the sum of the maximum fixed operator estimate in each region, with every original physical operator set to 1 and the collapsed macro to 0. These are normalized model costs, not measured runtime or materialized bytes.',
+        ('Cost is the sum of the maximum fixed operator estimate in each region. Aggregation-heavy assigns 8 to both local/global aggregation stages; join-heavy assigns 8 to both build/probe stages. Other operators remain 1 and the collapsed macro remains 0. These are declared sensitivity profiles, not measured runtime or materialized bytes. Logical definitions, physical metadata and blocking declarations match the saved uniform-cost graphs exactly.' if weighted else
+         'Cost is the sum of the maximum fixed operator estimate in each region, with every original physical operator set to 1 and the collapsed macro to 0. These are normalized model costs, not measured runtime or materialized bytes.'),
         *graph_scope,
         'Loop operators still carry requiresMaterializedExecution=true. The research harness directly calls PASTA search; the normal main dispatcher forces full materialization. These are planner timings, not a claim that main can execute the returned pipelined loop plans.',
         'Compiled executors, schemas, partition requirements and operator flags are retained in Y, apart from the explicit synthetic zero-cost macro. GUI result-view storage settings are excluded from this topology/fixed-cost comparison.',
