@@ -58,7 +58,7 @@ object XYPlanningComparison {
   private def id(name: String): PhysicalOpIdentity =
     PhysicalOpIdentity(OperatorIdentity(name), "main")
 
-  private def planOf(
+  private[scheduling] def planOf(
       ids: Set[PhysicalOpIdentity],
       links: Set[PhysicalLink],
       required: Set[PhysicalLink]

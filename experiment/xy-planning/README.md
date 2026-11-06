@@ -65,3 +65,19 @@ The four `(block selectable edges, outer selectable edges)` pairs are `(3,2)`, `
 This is a runnable one-block pilot, not a production Y integration or submission-ready benchmark. It uses fixed estimates and four small graph shapes; it does not establish a general speedup, model loop iterations, or measure nested loops. A zero-valued isolated macro is valid for the additive objective only. Compare complete times and estimated costs, not just assignment counts. Repeat in fresh JVMs before interpreting small timing differences; preserve raw samples and report both pruning modes.
 
 The source change adds only estimator injection (the default is unchanged) and a package-visible evaluator for a supplied materialization assignment. Main/prototype checkouts and the paper remain unchanged. All work is local to `codex/xy-planning-pilot`.
+
+## Larger and varied sweep
+
+```powershell
+./experiment/xy-planning/run-extended.ps1
+```
+
+This runs 16 topologies with two cost profiles: chains, a chain with a blocking shortcut, serial diamonds, and fan-out/merge graphs. Each family has increasing sizes; extra chain/shortcut cases put most selectable edges inside or outside the block. The largest cases have 13 selectable edges (8,192 assignments without pruning). The single-block contract and the real PASTA search/composition path are unchanged.
+
+The `uniform` profile assigns 1 to every operator. The `skewed` profile uses seeded draws from {1,2,4,16}; the weights are identical for both strategies and pruning modes on each graph. All operators and edges, including required cuts and weights, are saved as CSV. These are generated graphs, not application workloads.
+
+Defaults: three fresh JVMs, one warm-up pair and three measured pairs per graph/profile/pruning mode/JVM, for 1,152 measured plans. Scenario and pruning-mode order are shuffled deterministically per JVM; strategy order alternates. Full-plan checks require all four strategy/pruning combinations to have the same minimum cost. All samples stay in the report, including GC-affected samples. Increase `-Repetitions` and `-Warmups` for a longer run.
+
+Results go into a new timestamped directory under `target/xy-planning-extended/`. It contains metadata, per-JVM logs/raw samples/fixtures, `summary.csv`, `REPORT.md`, and PNG/PDF plots. Python with matplotlib is needed for the report (override `-Python` on other installations). Rebuild a report with `python -I experiment/xy-planning/analyze.py <result-directory>`.
+
+The report calls X or Y a repeatable winner only when it has at least a 10% paired-median advantage in every JVM; otherwise it says close/mixed. The plotted bars span per-JVM medians, not confidence intervals. This does not turn synthetic planning measurements into a workflow-runtime or general-speedup claim.

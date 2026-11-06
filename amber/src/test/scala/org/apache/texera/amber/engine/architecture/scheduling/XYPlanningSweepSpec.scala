@@ -25,7 +25,9 @@ class XYPlanningSweepSpec extends AnyFlatSpec {
   import XYPlanningComparison._
   import XYPlanningSweep._
 
-  for (shape <- Seq("chain", "shortcut", "diamond", "fanout"); profile <- Seq("uniform", "skewed")) {
+  for (
+    shape <- Seq("chain", "shortcut", "diamond", "fanout"); profile <- Seq("uniform", "skewed")
+  ) {
     "The varied fixtures" should s"preserve minimum cost with both pruning modes for $shape/$profile" in {
       val size = if (Set("diamond", "fanout")(shape)) 1 else 3
       val spec = Scenario(s"test-$shape", shape, size, 2, profile)
@@ -48,8 +50,8 @@ class XYPlanningSweepSpec extends AnyFlatSpec {
     assert(scenarios.size == 32)
     val inputs = scenarios.map(fixtureFor)
     assert(inputs.map(i => selectable(i).productIterator.map(_.asInstanceOf[Int]).sum).max == 13)
-    assert(inputs.exists(i => { val (a,b) = selectable(i); a >= 3*b }))
-    assert(inputs.exists(i => { val (a,b) = selectable(i); b >= 3*a }))
+    assert(inputs.exists(i => { val (a, b) = selectable(i); a >= 3 * b }))
+    assert(inputs.exists(i => { val (a, b) = selectable(i); b >= 3 * a }))
     assert(inputs.forall(i => i.weights.values.forall(_ > 0)))
     scenarios.foreach { s =>
       assert(fixtureFor(s).weights == fixtureFor(s).weights)
@@ -66,11 +68,15 @@ class XYPlanningSweepSpec extends AnyFlatSpec {
   }
 
   it should "reject invalid shapes, profiles and sizes" in {
-    for (s <- Seq(Scenario("bad", "unknown", 2, 2, "uniform"),
-                  Scenario("bad", "chain", 2, 2, "unknown"),
-                  Scenario("bad", "chain", 0, 2, "uniform"),
-                  Scenario("bad", "shortcut", 2, 2, "uniform"),
-                  Scenario("bad", "diamond", 2, 0, "uniform"))) {
+    for (
+      s <- Seq(
+        Scenario("bad", "unknown", 2, 2, "uniform"),
+        Scenario("bad", "chain", 2, 2, "unknown"),
+        Scenario("bad", "chain", 0, 2, "uniform"),
+        Scenario("bad", "shortcut", 2, 2, "uniform"),
+        Scenario("bad", "diamond", 2, 0, "uniform")
+      )
+    ) {
       intercept[IllegalArgumentException](fixtureFor(s))
     }
   }
