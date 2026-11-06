@@ -80,4 +80,6 @@ Defaults: three fresh JVMs, one warm-up pair and three measured pairs per graph/
 
 Results go into a new timestamped directory under `target/xy-planning-extended/`. It contains metadata, per-JVM logs/raw samples/fixtures, `summary.csv`, `REPORT.md`, and PNG/PDF plots. Python with matplotlib is needed for the report (override `-Python` on other installations). Rebuild a report with `python -I experiment/xy-planning/analyze.py <result-directory>`.
 
+After timing, `oracle.py` independently enumerates the saved graphs using connected components and cycle detection, and checks their minimum costs against every measurement. It does not call the Scala planner. Re-run it with `python -I experiment/xy-planning/oracle.py <result-directory>`; results are saved in `oracle.json`.
+
 The report calls X or Y a repeatable winner only when it has at least a 10% paired-median advantage in every JVM; otherwise it says close/mixed. The plotted bars span per-JVM medians, not confidence intervals. This does not turn synthetic planning measurements into a workflow-runtime or general-speedup claim.

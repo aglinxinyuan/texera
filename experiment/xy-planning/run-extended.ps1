@@ -42,7 +42,8 @@ try {
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/XYPlanningSweep.scala',
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/XYPlanningSweepSpec.scala',
         'experiment/xy-planning/run-extended.ps1',
-        'experiment/xy-planning/analyze.py'
+        'experiment/xy-planning/analyze.py',
+        'experiment/xy-planning/oracle.py'
     )
     $hashes = @{}
     foreach ($sourcePath in $sourcePaths) {
@@ -83,6 +84,8 @@ try {
         }
         Get-Content "$forkRoot/run.log" -Tail 3
     }
+    & $Python -X utf8 -I experiment/xy-planning/oracle.py $outputRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Independent minimum-cost verification failed' }
     & $Python -X utf8 -I experiment/xy-planning/analyze.py $outputRoot
     if ($LASTEXITCODE -ne 0) { throw 'Result verification/analysis failed' }
     Write-Host "Report: $outputRoot/REPORT.md"

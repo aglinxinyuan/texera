@@ -118,6 +118,12 @@ def analyze(root):
     lines += ["", "## Interpretation limits", "",
               "These are generated one-block planning graphs, not measured application traces. Uniform estimates are all 1; skewed estimates are seeded draws from {1,2,4,16}. Both use the additive sum-of-region-maxima objective. Results do not measure execution time, loop iteration counts, nested blocks, or the fallback materialized-port-count objective. The Y adapter is research code; neither the production planner selection nor the paper was changed.", "",
               "Pruning changes the work actually done, so edge-assignment counts alone cannot predict the winner. Use search states, complete elapsed time and Y decomposition/composition together. Large unpruned gaps and small pruned differences must be reported separately."]
+    if (root / "oracle.json").exists():
+        oracle = json.loads((root / "oracle.json").read_text())
+        assert len(oracle) == 32
+        assert all(costs[r["case"]] == {r["minimum_cost"]} for r in oracle)
+        lines += ["", "## Independent check", "",
+                  f"A separate Python connected-component/Kahn enumerator checked all {sum(r['assignments'] for r in oracle):,} assignments and confirmed the same minimum for all 32 graph/cost combinations. See oracle.json."]
     (root / "REPORT.md").write_text("\n".join(lines)+"\n", encoding="utf-8", newline="\n")
     plot(root, summary)
     print(f"Verified {len(rows)} plans / {len(pairs)} pairs. Report: {root / 'REPORT.md'}")
@@ -142,6 +148,7 @@ def plot(root, summary):
             ax.plot([s['min_fork_ratio'], s['max_fork_ratio']], [i, i], color=colors[s['winner']], linewidth=2)
             ax.scatter(s['paired_ratio'], i, color=colors[s['winner']], s=25, zorder=3)
         ax.set_xscale("log")
+        ax.set_xticks([1, 2, 5, 10, 20, 50, 100] if pruning == "false" else [.25, .5, 1, 2, 4])
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x:g}×"))
         ax.set_title(f"Pruning {'on' if pruning == 'true' else 'off'}")
         ax.set_xlabel("X time / Y time   (higher favors Y)")
