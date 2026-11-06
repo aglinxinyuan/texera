@@ -188,3 +188,12 @@ cross-checks on the smallest two sizes in each profile. Output is under
 `target/xy-planning-native-weighted/<timestamp>/`. The saved uniform reference
 files and source files are SHA256-pinned throughout the run. No workflow
 execution, production scheduling change or manuscript edit is involved.
+
+## A cost profile that changes the selected plan
+
+Run `./experiment/xy-planning/run-cost-choice.ps1` for a small native correctness
+case with six body operators and the same two 8:1 profiles. Plan A costs13/34
+under aggregation-heavy/join-heavy estimates; plan B costs14/28. Both planners
+choose the unique minimum with pruning on, checked against all512 assignments
+per profile. See [COST-CHOICE.md](COST-CHOICE.md) for the graph, exact cuts,
+selection procedure and limitations. This short run makes no timing claim.
