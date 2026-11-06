@@ -126,6 +126,15 @@ object NativeXYFixtures {
       List.empty,
       List.empty
     )
+    compileLogical(logical, start, end, begin)
+  }
+
+  private[scheduling] def compileLogical(
+      logical: LogicalPlanPojo,
+      start: LoopStartOpDesc,
+      end: LoopEndOpDesc,
+      begin: Long
+  ): CompiledXYFixtures.Compiled = {
     val definition =
       JSONUtils.objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(logical)
     val result =

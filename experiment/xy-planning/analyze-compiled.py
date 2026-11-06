@@ -36,7 +36,11 @@ def analyze(root):
     spec.loader.exec_module(oracle)
     metadata = json.loads((root/'metadata.json').read_text(encoding='utf-8-sig'))
     expected_cases = set(metadata.get('cases', ['kmeans','files','branching-files']))
-    native = metadata.get('suite') == 'native'
+    native = metadata.get('suite', '').startswith('native')
+    large = metadata.get('suite') == 'native-large'
+    module_spec = importlib.util.spec_from_file_location('module_oracle', Path(__file__).with_name('module-oracle.py'))
+    module_oracle = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module_oracle)
     all_rows, graphs = [], {}
     for fork in range(metadata['forks']):
         folder = root/f'fork-{fork}'
@@ -69,13 +73,16 @@ def analyze(root):
         assert all(a in weights and b in weights for a,b,_ in links)
         required = {i for i,e in enumerate(links) if e[2]}
         optional = [i for i in range(len(links)) if i not in required]
-        costs = []
-        for mask in range(1 << len(optional)):
-            cuts = required | {i for bit,i in enumerate(optional) if mask & (1 << bit)}
-            cost = oracle.cost_of(weights, weights, links, cuts)
-            if cost is not None:
-                costs.append(cost)
-        best = min(costs)
+        if large:
+            inside = {r['operator'] for r in ops if r['inside'] == 'true'}
+            boundary = {i for i,(a,b,_) in enumerate(links) if (a in inside) != (b in inside)}
+            compiler_required = {i for i,r in enumerate(link_rows) if r['compiler_required'] == 'true'}
+            assert required == compiler_required | boundary, 'non-compiler internal cut added'
+            independent = module_oracle.minimum(weights,links,inside)
+        else:
+            independent = module_oracle.enumerate_minimum(weights,links)
+            independent['method'] = 'whole-graph exhaustive enumeration'
+        best = independent['minimum_cost']
         measures = [r for r in all_rows if r['case'] == name]
         for r in measures:
             cuts = {int(i) for i in r['cuts'].split(';') if i}
@@ -101,7 +108,7 @@ def analyze(root):
         winner = 'X' if all(f['paired_y_over_x']>1.1 for f in fork_details) else ('Y' if all(f['paired_y_over_x']<1/1.1 for f in fork_details) else 'close/mixed')
         result = dict(case=name,operators=len(ops),edges=len(links),x_ms=medians['X'],y_ms=medians['Y'],paired_y_over_x=median(ratios),cost=best,x_states=state_text['X'],y_states=state_text['Y'],winner=winner)
         summary.append(result)
-        verification.append(dict(case=name,assignments=1 << len(optional),valid_assignments=len(costs),minimum_cost=best,verified_plans=len(measures),forks=fork_details,
+        verification.append(dict(case=name,assignments=independent['assignments'],independent_oracle=independent,minimum_cost=best,verified_plans=len(measures),forks=fork_details,
             y_phase_median_ms={k:median(int(r[k])/1e6 for r in measures if r['strategy']=='Y') for k in ('decomposition_ns','search_ns','composition_ns')},
             gc_affected_plans=sum(int(r['gc_count'])>0 for r in measures)))
         lines.append(f"| {name} | {len(ops)} / {len(links)} | {medians['X']:.4f} | {medians['Y']:.4f} | {median(ratios):.2f} | {best:g} | {state_text['X']} / {state_text['Y']} |")
@@ -119,7 +126,8 @@ def analyze(root):
         *graph_scope,
         'Loop operators still carry requiresMaterializedExecution=true. The research harness directly calls PASTA search; the normal main dispatcher forces full materialization. These are planner timings, not a claim that main can execute the returned pipelined loop plans.',
         'Compiled executors, schemas, partition requirements and operator flags are retained in Y, apart from the explicit synthetic zero-cost macro. GUI result-view storage settings are excluded from this topology/fixed-cost comparison.',
-        'Each selected plan was checked by the production evaluator and an independent connected-component/Kahn oracle. The oracle enumerates all edge assignments to confirm the minimum.',
+        ('Each selected plan was checked by the production evaluator and an independent connected-component/Kahn oracle. The oracle exhaustively enumerates each sealed module, sums its exact minima and validates the composed plan on the full graph. It checks single entry/exit, mandatory boundary cuts and all body nodes on entry-to-exit paths. Full-graph enumeration also cross-checks cases with at most 14 optional edges. Assignment counts include both module searches and any full cross-check; larger cases are not globally exhaustively enumerated.' if large else
+         'Each selected plan was checked by the production evaluator and an independent connected-component/Kahn oracle. The oracle enumerates all edge assignments to confirm the minimum.'),
         'The per-JVM >10% paired-median rule labels an operational timing difference, not statistical significance. No outliers or GC samples were removed.', '',
         '## Per-JVM paired medians', '']
     for item in verification:
@@ -130,7 +138,7 @@ def analyze(root):
         writer = csv.DictWriter(stream,fieldnames=list(summary[0]))
         writer.writeheader(); writer.writerows(summary)
     print('\n'.join(lines[:12]))
-    print(f"Verified {len(all_rows)} selected plans and {sum(r['assignments'] for r in verification)} exhaustive assignments.")
+    print(f"Verified {len(all_rows)} selected plans and {sum(r['assignments'] for r in verification)} independent assignments (see method per case).")
 
 
 if __name__ == '__main__':

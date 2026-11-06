@@ -129,3 +129,35 @@ The output directory is `target/xy-planning-native/<timestamp>/`. Physical IDs
 include layer names, so oracle checks cannot merge stages of one logical
 operator. All other timing and cost assumptions above still apply. This is
 neither a data-processing runtime test nor a production pipeline change.
+
+## Larger native branches inside and outside the loop
+
+Run `powershell -File experiment/xy-planning/run-compiled.ps1 -Suite native-large`.
+Six predeclared cases use 1/1, 2/2, 3/3, 4/4, 1/4 and 4/1 enrichment groups
+inside/outside the loop (12-36 physical operators). Each group branches into
+an aggregate and a raw-row path, then joins the per-file statistic back to
+those rows. Successive groups compute sum, count, minimum and maximum.
+Outside groups precede LoopStart; inside groups follow it. LoopEnd feeds a
+native sort. LoopStart selects rows with value >= i for i = 0, 1, 2.
+
+All descriptors compile strictly with actual schemas and blocking dependencies.
+Each group expands to local/global aggregation and build/probe join stages.
+The same timing protocol and fixed-cost model apply. Pruning stays on in all
+timed searches. Outputs are in `target/xy-planning-native-large/<timestamp>/`.
+
+For up to 8 optional edges, an untimed Scala search without pruning also
+checks the reference cost. Larger cases leave the exhaustive-reference columns
+blank; they do not silently run a prohibitively large whole-graph search.
+The independent Python checker enumerates both sealed modules exactly and
+validates their composed minimum on the full graph. It preserves the
+zero-weight macro's boundary arcs, checks the single-entry/single-exit path
+conditions and mandatory boundary cuts, and also cross-checks by full-graph
+enumeration at up to 14 optional edges. The largest case has 25 optional
+edges: 8,192 inner plus 4,096 outer assignments, rather than 33,554,432 full
+assignments. This proof applies to these sealed graphs and the additive region
+cost; it does not assert equivalence for arbitrary graphs or cost models.
+
+Run `python -I experiment/xy-planning/test_module_oracle.py` for small weighted
+branch/bypass cross-checks and rejection tests for invalid boundaries and cycles.
+All physical manifests, selected cut sets, exact minima, assignment counts and
+per-JVM samples are saved; no cases or GC samples are dropped.

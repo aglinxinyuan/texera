@@ -51,7 +51,8 @@ object CompiledXYBenchmark {
 
   private[scheduling] def run(
       args: Array[String],
-      fixtures: Vector[(String, String, () => CompiledXYFixtures.Compiled)]
+      fixtures: Vector[(String, String, () => CompiledXYFixtures.Compiled)],
+      exhaustiveLimit: Int = 20
   ): Unit = {
     require(args.length == 4, "usage: output-directory repetitions warmups fork")
     val output = Paths.get(args(0))
@@ -143,7 +144,10 @@ object CompiledXYBenchmark {
             StandardCharsets.UTF_8
           )
         val orderedEdges = input.plan.links.toVector.sortBy(_.toString)
-        val reference = searchX(input, pruning = false)
+        val optionalCount = input.plan.links.size - input.plan.getBlockingAndDependeeLinks.size
+        val reference =
+          if (optionalCount <= exhaustiveLimit) Some(searchX(input, pruning = false)) else None
+        var equalCost = reference.map(_.cost)
         row(
           compilation,
           name,
@@ -151,8 +155,8 @@ object CompiledXYBenchmark {
           compiled.compileNs,
           input.plan.operators.size,
           orderedEdges.size,
-          reference.cost,
-          reference.states
+          reference.map(_.cost.toString).getOrElse(""),
+          reference.map(_.states.toString).getOrElse("")
         )
         input.plan.operators.toVector.sortBy(op => operatorKey(op.id)).foreach { op =>
           row(
@@ -202,7 +206,8 @@ object CompiledXYBenchmark {
           // Validate after both timed searches so validation does not favor the second search.
           pair.foreach {
             case (strategy, result, gcCount, gcMs) =>
-              require(result.cost == reference.cost, s"nonoptimal $name/$strategy")
+              if (equalCost.isEmpty) equalCost = Some(result.cost)
+              require(equalCost.contains(result.cost), s"unequal cost $name/$strategy")
               require(
                 evaluate(input, result.materialized).contains(result.cost),
                 "invalid selected cuts"
@@ -236,7 +241,7 @@ object CompiledXYBenchmark {
           }
         }
         println(
-          s"Compiled XY fork=$fork case=$name equal cost=${reference.cost}, $repetitions measured pairs"
+          s"Compiled XY fork=$fork case=$name equal cost=${equalCost.get}, $repetitions measured pairs"
         )
       }
     } finally {
