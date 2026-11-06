@@ -88,8 +88,9 @@ def analyze(root):
         all_rows.extend(measurements)
     summary, verification = [], []
     lines = ['# Compiled X/Y planning comparison', '',
-        f"Pruning on; {len(expected_cases)} strictly compiled {'native-operator' if native else 'saved demo'} workflows; alternating X/Y order in each fresh JVM.",
-        f"{metadata['forks']} JVMs, {metadata['warmups']} warm-up pairs and {metadata['repetitions']} measured pairs per workflow per JVM.",
+        (f"Pruning on; {len(expected_cases)//2} unchanged native workflows with two cost profiles; alternating X/Y order in each fresh JVM." if weighted else
+         f"Pruning on; {len(expected_cases)} strictly compiled {'native-operator' if native else 'saved demo'} workflows; alternating X/Y order in each fresh JVM."),
+        f"{metadata['forks']} JVMs, {metadata['warmups']} warm-up pairs and {metadata['repetitions']} measured pairs per {'workflow/profile' if weighted else 'workflow'} per JVM.",
         'Times include Y decomposition and flat-plan reconstruction. Compilation, exhaustive reference search and result validation are excluded.', '',
         '| Workflow | Operators / edges | X median ms | Y median ms | Y/X paired median | Cost X = Y | States X / Y |',
         '|---|---:|---:|---:|---:|---:|---:|']
