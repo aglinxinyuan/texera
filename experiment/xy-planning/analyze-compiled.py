@@ -1,0 +1,126 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+
+"""Verify compiled-graph plans independently, then summarize pruning-on paired timings."""
+import csv
+import importlib.util
+import json
+from pathlib import Path
+from statistics import median
+import sys
+
+
+def rows(path):
+    with path.open(encoding='utf-8-sig', newline='') as stream:
+        return list(csv.DictReader(stream))
+
+
+def analyze(root):
+    spec = importlib.util.spec_from_file_location('xy_oracle', Path(__file__).with_name('oracle.py'))
+    oracle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(oracle)
+    metadata = json.loads((root/'metadata.json').read_text(encoding='utf-8-sig'))
+    all_rows, graphs = [], {}
+    for fork in range(metadata['forks']):
+        folder = root/f'fork-{fork}'
+        ops, edge_rows = rows(folder/'operators.csv'), rows(folder/'edges.csv')
+        assert {r['case'] for r in ops} == {'kmeans','files','branching-files'}
+        current = {}
+        for name in sorted({r['case'] for r in ops}):
+            selected_ops = sorted((r for r in ops if r['case'] == name), key=lambda r:r['operator'])
+            selected_edges = [r for r in edge_rows if r['case'] == name]
+            current[name] = (selected_ops, selected_edges)
+        if graphs:
+            assert current == graphs, 'compiled graphs changed across JVMs'
+        graphs = current
+        measurements = rows(folder/'results.csv')
+        assert len(measurements) == 3 * 2 * metadata['repetitions']
+        assert all(int(r['fork']) == fork for r in measurements)
+        assert len({(r['case'], r['repetition'], r['strategy']) for r in measurements}) == len(measurements)
+        all_rows.extend(measurements)
+    summary, verification = [], []
+    lines = ['# Compiled X/Y planning comparison', '',
+        'Pruning on; 3 strictly compiled saved workflows; alternating X/Y order in each fresh JVM.',
+        f"{metadata['forks']} JVMs, {metadata['warmups']} warm-up pairs and {metadata['repetitions']} measured pairs per workflow per JVM.",
+        'Times include Y decomposition and flat-plan reconstruction. Compilation, exhaustive reference search and result validation are excluded.', '',
+        '| Workflow | Operators / edges | X median ms | Y median ms | Y/X paired median | Cost X = Y | States X / Y |',
+        '|---|---:|---:|---:|---:|---:|---:|']
+    for name, (ops, link_rows) in graphs.items():
+        weights = {r['operator']:float(r['estimate']) for r in ops}
+        links = [(r['from'],r['to'],r['required']=='true') for r in link_rows]
+        required = {i for i,e in enumerate(links) if e[2]}
+        optional = [i for i in range(len(links)) if i not in required]
+        costs = []
+        for mask in range(1 << len(optional)):
+            cuts = required | {i for bit,i in enumerate(optional) if mask & (1 << bit)}
+            cost = oracle.cost_of(weights, weights, links, cuts)
+            if cost is not None:
+                costs.append(cost)
+        best = min(costs)
+        measures = [r for r in all_rows if r['case'] == name]
+        for r in measures:
+            cuts = {int(i) for i in r['cuts'].split(';') if i}
+            assert required <= cuts <= set(range(len(links)))
+            assert oracle.cost_of(weights, weights, links, cuts) == float(r['cost']) == best
+            assert int(r['total_ns']) > 0
+            assert sum(int(r[k]) for k in ('decomposition_ns','search_ns','composition_ns')) == int(r['total_ns'])
+        pairs = {(r['fork'],r['repetition'],r['strategy']):r for r in measures}
+        ratios, fork_details = [], []
+        for fork in range(metadata['forks']):
+            this_ratios = []
+            for rep in range(metadata['repetitions']):
+                x,y = [pairs[(str(fork),str(rep),s)] for s in ('X','Y')]
+                assert x['order'] == y['order']
+                assert x['order'] == ('XY' if (rep+fork)%2 == 0 else 'YX')
+                this_ratios.append(int(y['total_ns'])/int(x['total_ns']))
+            ratios.extend(this_ratios)
+            fork_details.append({'fork':fork, 'paired_y_over_x':median(this_ratios),
+                **{s+'_median_ms':median(int(r['total_ns'])/1e6 for r in measures if r['fork']==str(fork) and r['strategy']==s) for s in ('X','Y')}})
+        medians = {s:median(int(r['total_ns'])/1e6 for r in measures if r['strategy']==s) for s in ('X','Y')}
+        states = {s:sorted({int(r['search_states']) for r in measures if r['strategy']==s}) for s in ('X','Y')}
+        assert all(len(v)==1 for v in states.values())
+        winner = 'X' if all(f['paired_y_over_x']>1.1 for f in fork_details) else ('Y' if all(f['paired_y_over_x']<1/1.1 for f in fork_details) else 'close/mixed')
+        result = dict(case=name,operators=len(ops),edges=len(links),x_ms=medians['X'],y_ms=medians['Y'],paired_y_over_x=median(ratios),cost=best,x_states=states['X'][0],y_states=states['Y'][0],winner=winner)
+        summary.append(result)
+        verification.append(dict(case=name,assignments=1 << len(optional),valid_assignments=len(costs),minimum_cost=best,verified_plans=len(measures),forks=fork_details,
+            y_phase_median_ms={k:median(int(r[k])/1e6 for r in measures if r['strategy']=='Y') for k in ('decomposition_ns','search_ns','composition_ns')},
+            gc_affected_plans=sum(int(r['gc_count'])>0 for r in measures)))
+        lines.append(f"| {name} | {len(ops)} / {len(links)} | {medians['X']:.4f} | {medians['Y']:.4f} | {median(ratios):.2f} | {best:g} | {states['X'][0]} / {states['Y'][0]} |")
+    lines += ['', '## Interpretation and scope', '',
+        'These small graphs do not give Y a large search space to split. Inspect search-state counts and decomposition/reconstruction costs before generalizing the timing result.',
+        'Cost is the sum of the maximum fixed operator estimate in each region, with every original operator set to 1 and the collapsed macro to 0. These are normalized model costs, not measured runtime or materialized bytes.',
+        'The two saved demos use Python UDFs. The file demo has embedded filename/text records, not native Read File or a control-variable port; the branching variant counts words and characters on two branches that merge at LoopEnd.',
+        'Both original demos terminate at LoopEnd. Only the incoming loop boundary is added as a required cut. The compiler marks no UDF output as blocking, including the table-based K-means UDF; no artificial internal blocking edge is added.',
+        'Loop operators still carry requiresMaterializedExecution=true. The research harness directly calls PASTA search; the normal main dispatcher forces full materialization. These are planner timings, not a claim that main can execute the returned pipelined loop plans.',
+        'Compiled executors, schemas, partition requirements and operator flags are retained in Y, apart from the explicit synthetic zero-cost macro. GUI result-view storage settings are excluded from this topology/fixed-cost comparison.',
+        'Each selected plan was checked by the production evaluator and an independent connected-component/Kahn oracle. The oracle enumerates all edge assignments to confirm the minimum.',
+        'The per-JVM >10% paired-median rule labels an operational timing difference, not statistical significance. No outliers or GC samples were removed.', '',
+        '## Per-JVM paired medians', '']
+    for item in verification:
+        lines.append(f"- {item['case']}: " + '; '.join(f"JVM {f['fork']}: X {f['X_median_ms']:.4f} ms, Y {f['Y_median_ms']:.4f} ms, paired Y/X {f['paired_y_over_x']:.2f}" for f in item['forks']))
+    (root/'REPORT.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    (root/'verification.json').write_text(json.dumps(verification,indent=2)+'\n',encoding='utf-8')
+    with (root/'summary.csv').open('w',newline='',encoding='utf-8') as stream:
+        writer = csv.DictWriter(stream,fieldnames=list(summary[0]))
+        writer.writeheader(); writer.writerows(summary)
+    print('\n'.join(lines[:12]))
+    print(f"Verified {len(all_rows)} selected plans and {sum(r['assignments'] for r in verification)} exhaustive assignments.")
+
+
+if __name__ == '__main__':
+    analyze(Path(sys.argv[1]))

@@ -17,7 +17,6 @@
  * under the License.
  */
 
-
 package org.apache.texera.amber.engine.architecture.scheduling
 
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -38,9 +37,13 @@ object CompiledXYFixtures {
     "files" -> "demo2_per_file_counts.json",
     "branching-files" -> "demo3_branching_file_metrics.json"
   )
-  def folder: Path = Iterator.iterate(Paths.get("").toAbsolutePath)(_.getParent)
-    .takeWhile(_ != null).map(_.resolve("experiment/xy-planning/workflows"))
-    .find(Files.isDirectory(_)).getOrElse(throw new IllegalStateException("fixture folder missing"))
+  def folder: Path =
+    Iterator
+      .iterate(Paths.get("").toAbsolutePath)(_.getParent)
+      .takeWhile(_ != null)
+      .map(_.resolve("experiment/xy-planning/workflows"))
+      .find(Files.isDirectory(_))
+      .getOrElse(throw new IllegalStateException("fixture folder missing"))
 
   case class Compiled(input: XYPlanningComparison.Input, original: PhysicalPlan, compileNs: Long)
 
@@ -60,20 +63,38 @@ object CompiledXYFixtures {
       flat.put("operatorID", node.get("operatorID").asText())
       mapper.treeToValue(flat, classOf[LogicalOp])
     }
-    val links = json.get("links").elements().asScala.map { node =>
-      val from = node.get("source")
-      val to = node.get("target")
-      require(from.get("portID").asText() == "output-0" && to.get("portID").asText() == "input-0")
-      LogicalLink(OperatorIdentity(from.get("operatorID").asText()), PortIdentity(),
-        OperatorIdentity(to.get("operatorID").asText()), PortIdentity())
-    }.toList
+    val links = json
+      .get("links")
+      .elements()
+      .asScala
+      .map { node =>
+        val from = node.get("source")
+        val to = node.get("target")
+        require(from.get("portID").asText() == "output-0" && to.get("portID").asText() == "input-0")
+        LogicalLink(
+          OperatorIdentity(from.get("operatorID").asText()),
+          PortIdentity(),
+          OperatorIdentity(to.get("operatorID").asText()),
+          PortIdentity()
+        )
+      }
+      .toList
     val result = new WorkflowCompiler(new WorkflowContext()).compile(
-      LogicalPlanPojo(operators.toList, links, List.empty, List.empty), CompilationErrorHandling.Strict)
+      LogicalPlanPojo(operators.toList, links, List.empty, List.empty),
+      CompilationErrorHandling.Strict
+    )
     require(result.operatorIdToError.isEmpty, result.operatorIdToError.toString)
-    val original = result.physicalPlan.getOrElse(throw new IllegalStateException("no physical plan"))
-    require(original.operators.forall(op => op.inputPorts.values.forall(_._3.isRight) && op.outputPorts.values.forall(_._3.isRight)), "unresolved compiled schema")
+    val original =
+      result.physicalPlan.getOrElse(throw new IllegalStateException("no physical plan"))
+    require(
+      original.operators.forall(op =>
+        op.inputPorts.values.forall(_._3.isRight) && op.outputPorts.values.forall(_._3.isRight)
+      ),
+      "unresolved compiled schema"
+    )
     def endpoint(kind: String) = {
-      val ids = exported.filter(_.get("operatorType").asText() == kind).map(_.get("operatorID").asText())
+      val ids =
+        exported.filter(_.get("operatorType").asText() == kind).map(_.get("operatorID").asText())
       require(ids.size == 1, "exactly one loop required")
       original.operators.find(_.id.logicalOpId.id == ids.head).get.id
     }
@@ -81,14 +102,27 @@ object CompiledXYFixtures {
     val end = endpoint("LoopEnd")
     var block = Set(start)
     var next = original.links.filter(l => block(l.fromOpId)).map(_.toOpId) ++ block
-    while (next != block) { block = next; next = original.links.filter(l => block(l.fromOpId)).map(_.toOpId) ++ block }
+    while (next != block) {
+      block = next; next = original.links.filter(l => block(l.fromOpId)).map(_.toOpId) ++ block
+    }
     require(original.links.forall(_.fromOpId != end), "these demos have terminal LoopEnd")
     val boundaries = original.links.filter(l => block(l.fromOpId) != block(l.toOpId))
     val plan = original.copy(operators = original.operators.map { op =>
-      op.copy(outputPorts = op.outputPorts.map { case (port, (definition, outgoing, schema)) =>
-        port -> ((definition.copy(blocking = definition.blocking || outgoing.exists(boundaries)), outgoing, schema))
+      op.copy(outputPorts = op.outputPorts.map {
+        case (port, (definition, outgoing, schema)) =>
+          port -> (
+            (
+              definition.copy(blocking = definition.blocking || outgoing.exists(boundaries)),
+              outgoing,
+              schema
+            )
+          )
       })
     })
-    Compiled(XYPlanningComparison.Input(plan, block, start, end, plan.operators.map(_.id -> 1.0).toMap), original, System.nanoTime() - begin)
+    Compiled(
+      XYPlanningComparison.Input(plan, block, start, end, plan.operators.map(_.id -> 1.0).toMap),
+      original,
+      System.nanoTime() - begin
+    )
   }
 }

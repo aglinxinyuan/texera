@@ -17,7 +17,6 @@
  * under the License.
  */
 
-
 package org.apache.texera.amber.engine.architecture.scheduling
 
 import org.apache.texera.amber.core.executor.OpExecWithCode
@@ -36,6 +35,23 @@ class CompiledXYPlanningSpec extends AnyFlatSpec {
       assert(input.plan.operators.forall(_.opExecInitInfo.isInstanceOf[OpExecWithCode]))
       assert(input.plan.getOperator(input.start).requiresMaterializedExecution)
       assert(input.plan.getBlockingAndDependeeLinks.size == 1)
+      val parts = decompose(input)
+      for (part <- Seq(parts.inner, parts.outer); op <- part.operators if op.id != parts.macroId) {
+        val before = input.plan.getOperator(op.id)
+        assert(op.copy(inputPorts = before.inputPorts, outputPorts = before.outputPorts) == before)
+        assert(
+          op.inputPorts.view.mapValues(p => (p._1, p._3)).toMap == before.inputPorts.view
+            .mapValues(p => (p._1, p._3))
+            .toMap
+        )
+        assert(
+          op.outputPorts.view.mapValues(p => (p._1, p._3)).toMap == before.outputPorts.view
+            .mapValues(p => (p._1, p._3))
+            .toMap
+        )
+        assert(op.inputPorts.values.flatMap(_._2).toSet == part.getUpstreamPhysicalLinks(op.id))
+        assert(op.outputPorts.values.flatMap(_._2).toSet == part.getDownstreamPhysicalLinks(op.id))
+      }
       val x = searchX(input, pruning = true)
       val y = searchY(input, pruning = true)
       val exhaustive = searchX(input, pruning = false)

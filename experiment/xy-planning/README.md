@@ -83,3 +83,29 @@ Results go into a new timestamped directory under `target/xy-planning-extended/`
 After timing, `oracle.py` independently enumerates the saved graphs using connected components and cycle detection, and checks their minimum costs against every measurement. It does not call the Scala planner. Re-run it with `python -I experiment/xy-planning/oracle.py <result-directory>`; results are saved in `oracle.json`.
 
 The report calls X or Y a repeatable winner only when it has at least a 10% paired-median advantage in every JVM; otherwise it says close/mixed. The plotted bars span per-JVM medians, not confidence intervals. This does not turn synthetic planning measurements into a workflow-runtime or general-speedup claim.
+# Compiled workflow comparison
+
+Run `powershell -File experiment/xy-planning/run-compiled.ps1` from this worktree.
+The default is 3 fresh JVMs, 20 warm-up pairs and 100 measured pairs per graph,
+with production pruning enabled and alternating X/Y order. Output is under
+`target/xy-planning-compiled/<timestamp>/`; `analyze-compiled.py` verifies the
+saved selected cuts independently and writes `REPORT.md` and `summary.csv`.
+
+`workflows/` holds byte copies of the existing K-means and file-processing GUI
+demos and a derived word/character-count branching variant; `provenance.json`
+records their sources. Strict compilation preserves actual UDF executors,
+schemas, port definitions and partition requirements. The file demo uses
+embedded text records rather than native Read File or a control-variable port.
+Both demos terminate at LoopEnd. The adapter adds the model's incoming loop
+boundary cut; it adds no internal blocking edges. The compiled table UDF in the
+K-means demo has a nonblocking output declaration.
+
+This is a planning experiment, not workflow execution: main still dispatches
+loops to fully materialized scheduling. The harness directly invokes PASTA's
+search, and Y is a research implementation that decomposes and reconstructs the
+plan. Both use the same fixed estimates (1 per original operator, 0 for Y's
+macro), with cost = sum of region maxima. GUI result-view storage settings are
+excluded. Compilation and validation are outside the timer; Y decomposition
+and reconstruction are inside it. No data processing or pipeline runtime is
+measured, and equal model costs do not imply measured runtime equality.
+

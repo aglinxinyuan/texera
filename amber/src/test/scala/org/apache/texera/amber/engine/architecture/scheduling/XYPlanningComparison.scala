@@ -172,8 +172,9 @@ object XYPlanningComparison {
       "block must have one entry at LoopStart"
     )
     require(
-      leave.size == 1 && leave.head.fromOpId == input.end,
-      "block must have one exit at LoopEnd"
+      (leave.size == 1 && leave.head.fromOpId == input.end) ||
+        (leave.isEmpty && input.plan.getDownstreamPhysicalLinks(input.end).isEmpty),
+      "block must have one exit at LoopEnd or a terminal LoopEnd"
     )
     require(
       (enter ++ leave).subsetOf(input.plan.getBlockingAndDependeeLinks),
@@ -212,9 +213,14 @@ object XYPlanningComparison {
     )
   }
 
-  def searchY(input: Input, pruning: Boolean): Result = {
-    val begin = System.nanoTime()
-    validate(input)
+  private[scheduling] case class Decomposition(
+      inner: PhysicalPlan,
+      outer: PhysicalPlan,
+      macroId: PhysicalOpIdentity,
+      originalOf: Map[PhysicalLink, PhysicalLink]
+  )
+
+  private[scheduling] def decompose(input: Input): Decomposition = {
     val macroId = id("collapsed-block")
     require(!input.weights.contains(macroId), "reserved macro operator ID")
     def collapsed(link: PhysicalLink): PhysicalLink =
@@ -225,12 +231,49 @@ object XYPlanningComparison {
     val internal = input.plan.links.filter(l => input.block(l.fromOpId) && input.block(l.toOpId))
     val remaining = input.plan.links -- internal
     val required = input.plan.getBlockingAndDependeeLinks
-    val inner = planOf(input.block, internal, required.intersect(internal))
-    val outer = planOf(
-      input.outside + macroId,
-      remaining.map(collapsed),
-      required.intersect(remaining).map(collapsed)
-    )
+    // Keep compiled executors, schemas, partition requirements and flags. Only links change.
+    def rewire(operators: Set[PhysicalOp], links: Set[PhysicalLink]): PhysicalPlan =
+      PhysicalPlan(
+        operators.map { op =>
+          op.copy(
+            inputPorts = op.inputPorts.map {
+              case (port, (definition, _, schema)) =>
+                port -> (
+                  (
+                    definition,
+                    links.filter(l => l.toOpId == op.id && l.toPortId == port).toList,
+                    schema
+                  )
+                )
+            },
+            outputPorts = op.outputPorts.map {
+              case (port, (definition, _, schema)) =>
+                port -> (
+                  (
+                    definition,
+                    links.filter(l => l.fromOpId == op.id && l.fromPortId == port).toList,
+                    schema
+                  )
+                )
+            }
+          )
+        },
+        links
+      )
+    val inner = rewire(input.plan.operators.filter(op => input.block(op.id)), internal)
+    val outerLinks = remaining.map(collapsed)
+    val macroOp =
+      planOf(input.outside + macroId, outerLinks, required.intersect(remaining).map(collapsed))
+        .getOperator(macroId)
+    val outer =
+      rewire(input.plan.operators.filter(op => input.outside(op.id)) + macroOp, outerLinks)
+    Decomposition(inner, outer, macroId, remaining.map(l => collapsed(l) -> l).toMap)
+  }
+
+  def searchY(input: Input, pruning: Boolean): Result = {
+    val begin = System.nanoTime()
+    validate(input)
+    val Decomposition(inner, outer, macroId, originalOf) = decompose(input)
     val decomposeEnd = System.nanoTime()
     val innerPlanner = generator(inner, input.weights)
     val innerResult = innerPlanner.bottomUpSearch(
@@ -248,8 +291,10 @@ object XYPlanningComparison {
       oEarlyStop = pruning
     )
     val searchEnd = System.nanoTime()
-    val originalOf = remaining.map(l => collapsed(l) -> l).toMap
-    val materialized = required ++ innerResult.state ++ outerResult.state.map(originalOf)
+    val materialized =
+      input.plan.getBlockingAndDependeeLinks ++ innerResult.state ++ outerResult.state.map(
+        originalOf
+      )
     // Rebuild the flat plan with original IDs, storage URIs and worker allocations.
     val flat = generator(input.plan, input.weights)
       .evaluateMaterialization(materialized)
