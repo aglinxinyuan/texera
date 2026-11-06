@@ -19,6 +19,7 @@
 import importlib.util
 from pathlib import Path
 import random
+import sys
 import unittest
 
 spec = importlib.util.spec_from_file_location('module_oracle', Path(__file__).with_name('module-oracle.py'))
@@ -58,4 +59,4 @@ class ModuleOracleTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(testRunner=unittest.TextTestRunner(stream=sys.stdout))
