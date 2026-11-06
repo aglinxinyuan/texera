@@ -37,7 +37,7 @@ class XYPlanningComparisonSpec extends AnyFlatSpec {
         assert(input.plan.getBlockingAndDependeeLinks.subsetOf(result.materialized))
         assert(evaluate(input, result.materialized).contains(result.cost))
         assert(result.regions.flatten == input.block ++ input.outside)
-        assert(result.regions.map(_.size).sum == input.plan.operators.size)
+        assert(result.regions.toSeq.map(_.size).sum == input.plan.operators.size)
       }
     }
   }
@@ -58,12 +58,30 @@ class XYPlanningComparisonSpec extends AnyFlatSpec {
   it should "reject unsealed blocks instead of reporting an invalid comparison" in {
     val input = fixture(3, 1)
     intercept[IllegalArgumentException] {
-      searchY(input.copy(block = input.block - input.start), pruning = false)
+      searchY(input.copy(block = input.block.filterNot(_.logicalOpId.id == "b1")), pruning = false)
     }
   }
 
   it should "reject invalid fixture sizes" in {
     intercept[IllegalArgumentException](fixture(2, 1))
     intercept[IllegalArgumentException](fixture(3, 0))
+  }
+
+  it should "reject a missing required cut and invalid estimates" in {
+    val input = fixture(3, 1)
+    intercept[IllegalArgumentException](evaluate(input, Set.empty))
+    intercept[IllegalArgumentException] {
+      searchY(input.copy(weights = input.weights + (input.start -> Double.NaN)), pruning = false)
+    }
+    intercept[IllegalArgumentException] {
+      searchX(input.copy(weights = input.weights - input.start), pruning = false)
+    }
+  }
+
+  it should "reject a block without a LoopStart-to-LoopEnd path" in {
+    val input = fixture(3, 1)
+    val disconnected =
+      input.plan.copy(links = input.plan.links.filterNot(_.fromOpId == input.start))
+    intercept[IllegalArgumentException](searchY(input.copy(plan = disconnected), pruning = false))
   }
 }
