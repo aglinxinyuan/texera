@@ -78,7 +78,7 @@ The `uniform` profile assigns 1 to every operator. The `skewed` profile uses see
 
 Defaults: three fresh JVMs, one warm-up pair and three measured pairs per graph/profile/pruning mode/JVM, for 1,152 measured plans. Scenario and pruning-mode order are shuffled deterministically per JVM; strategy order alternates. Full-plan checks require all four strategy/pruning combinations to have the same minimum cost. All samples stay in the report, including GC-affected samples. Increase `-Repetitions` and `-Warmups` for a longer run.
 
-Results go into a new timestamped directory under `target/xy-planning-extended/`. It contains metadata, per-JVM logs/raw samples/fixtures, `summary.csv`, `REPORT.md`, and PNG/PDF plots. Python with matplotlib is needed for the report (override `-Python` on other installations). Rebuild a report with `python -I experiment/xy-planning/analyze.py <result-directory>`.
+Results go into a new timestamped directory under `target/xy-planning-extended/`. It contains metadata, per-JVM logs/raw samples/fixtures, `summary.csv`, `REPORT.md`, and PNG/PDF/SVG plots. Python with matplotlib is needed for the report (override `-Python` on other installations). Rebuild a report with `python -I experiment/xy-planning/analyze.py <result-directory>`.
 
 After timing, `oracle.py` independently enumerates the saved graphs using connected components and cycle detection, and checks their minimum costs against every measurement. It does not call the Scala planner. Re-run it with `python -I experiment/xy-planning/oracle.py <result-directory>`; results are saved in `oracle.json`.
 

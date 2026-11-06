@@ -158,6 +158,7 @@ def plot(root, summary):
     fig.suptitle("Complete planning time across generated workflows", fontsize=15)
     fig.savefig(root / "comparison.png", dpi=180)
     fig.savefig(root / "comparison.pdf")
+    fig.savefig(root / "comparison.svg")
     plt.close(fig)
 
 
