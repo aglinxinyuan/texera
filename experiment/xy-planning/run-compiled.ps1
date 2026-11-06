@@ -27,6 +27,17 @@ param(
     [string]$Python = 'C:/Users/linxi/AppData/Local/Programs/Python/Python312/python.exe'
 )
 $ErrorActionPreference = 'Stop'
+function Invoke-LoggedNative {
+    param([string]$Executable, [string[]]$NativeArgs, [string]$LogPath)
+    Get-Command $Executable -ErrorAction Stop | Out-Null
+    $savedPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell wraps native stderr as ErrorRecord, even for successful commands.
+        $ErrorActionPreference = 'Continue'
+        & $Executable @NativeArgs *> $LogPath
+        return $LASTEXITCODE
+    } finally { $ErrorActionPreference = $savedPreference }
+}
 $taskPath = $env:PATH
 Push-Location (Resolve-Path (Join-Path $PSScriptRoot '../..'))
 try {
@@ -66,16 +77,16 @@ try {
         os=[Environment]::OSVersion.ToString(); cpu=(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)
     } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "$output/metadata.json"
     Write-Host "Compiled comparison on $revision; output: $output"
-    & $Python -I experiment/xy-planning/test_module_oracle.py *> "$output/oracle-tests.log"
-    if ($LASTEXITCODE -ne 0) { throw 'Oracle tests failed' }
-    & sbt -java-home $JavaHome 'WorkflowExecutionService/testOnly org.apache.texera.amber.engine.architecture.scheduling.NativeBranchXYSpec org.apache.texera.amber.engine.architecture.scheduling.NativeXYPlanningSpec org.apache.texera.amber.engine.architecture.scheduling.CompiledXYPlanningSpec org.apache.texera.amber.engine.architecture.scheduling.XYPlanningComparisonSpec org.apache.texera.amber.engine.architecture.scheduling.XYPlanningSweepSpec org.apache.texera.amber.engine.architecture.scheduling.CostBasedScheduleGeneratorSpec' *> "$output/tests.log"
-    if ($LASTEXITCODE -ne 0) { Get-Content "$output/tests.log" -Tail 25; throw 'Tests failed' }
+    $nativeCode = Invoke-LoggedNative $Python @('-I','experiment/xy-planning/test_module_oracle.py') "$output/oracle-tests.log"
+    if ($nativeCode -ne 0) { throw 'Oracle tests failed' }
+    $nativeCode = Invoke-LoggedNative 'sbt' @('-java-home', $JavaHome, 'WorkflowExecutionService/testOnly org.apache.texera.amber.engine.architecture.scheduling.NativeBranchXYSpec org.apache.texera.amber.engine.architecture.scheduling.NativeXYPlanningSpec org.apache.texera.amber.engine.architecture.scheduling.CompiledXYPlanningSpec org.apache.texera.amber.engine.architecture.scheduling.XYPlanningComparisonSpec org.apache.texera.amber.engine.architecture.scheduling.XYPlanningSweepSpec org.apache.texera.amber.engine.architecture.scheduling.CostBasedScheduleGeneratorSpec') "$output/tests.log"
+    if ($nativeCode -ne 0) { Get-Content "$output/tests.log" -Tail 25; throw 'Tests failed' }
     for ($fork=0; $fork -lt $Forks; $fork++) {
         $folder="$output/fork-$fork"
         New-Item -ItemType Directory -Path $folder | Out-Null
         Write-Host "Starting fresh JVM $fork"
-        & sbt -java-home $JavaHome "WorkflowExecutionService/Test/runMain org.apache.texera.amber.engine.architecture.scheduling.$entry $folder $Repetitions $Warmups $fork" *> "$folder/run.log"
-        if ($LASTEXITCODE -ne 0) { Get-Content "$folder/run.log" -Tail 35; throw "JVM $fork failed" }
+        $nativeCode = Invoke-LoggedNative 'sbt' @('-java-home', $JavaHome, "WorkflowExecutionService/Test/runMain org.apache.texera.amber.engine.architecture.scheduling.$entry $folder $Repetitions $Warmups $fork") "$folder/run.log"
+        if ($nativeCode -ne 0) { Get-Content "$folder/run.log" -Tail 35; throw "JVM $fork failed" }
         if ((git rev-parse HEAD).Trim() -ne $revision) { throw 'Checkout changed during run' }
         foreach ($file in $sourcePaths) {
             if ((Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash -ne $hashes[$file]) { throw "Source changed: $file" }
