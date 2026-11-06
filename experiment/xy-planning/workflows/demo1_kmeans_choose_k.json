@@ -1,0 +1,123 @@
+{
+  "operators": [
+    {
+      "operatorID": "PythonUDFSourceV2-operator-a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1",
+      "operatorType": "PythonUDFSourceV2",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "code": "from pytexera import *\nimport pandas as pd\n\nclass GenerateOperator(UDFSourceOperator):\n    @overrides\n    def produce(self) -> Iterator[Union[TupleLike, TableLike, None]]:\n        centers = [(0.0, 0.0), (8.0, 8.0), (0.0, 8.0)]\n        offs = [(-0.5, -0.5), (0.5, 0.4), (-0.4, 0.5), (0.5, -0.5), (0.0, 0.0)]\n        rows = []\n        for cx, cy in centers:\n            for dx, dy in offs:\n                rows.append({\"x\": cx + dx, \"y\": cy + dy, \"K\": 0})\n        yield pd.DataFrame(rows)\n",
+        "workers": 1,
+        "defaultEnv": true,
+        "envName": "",
+        "columns": [
+          { "attributeName": "x", "attributeType": "double" },
+          { "attributeName": "y", "attributeType": "double" },
+          { "attributeName": "K", "attributeType": "integer" }
+        ]
+      },
+      "inputPorts": [],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Generate 2-D points (3 clusters)",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false,
+      "viewResult": true
+    },
+    {
+      "operatorID": "LoopStart-operator-b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2",
+      "operatorType": "LoopStart",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "initialization": "K = 2",
+        "output": "table.assign(K=K)"
+      },
+      "inputPorts": [
+        { "portID": "input-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false, "dependencies": [] }
+      ],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Loop Start  (init: K = 2 | output: table.assign(K=K))",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false
+    },
+    {
+      "operatorID": "PythonUDFV2-operator-c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3",
+      "operatorType": "PythonUDFV2",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "code": "from pytexera import *\nimport pandas as pd\nfrom sklearn.cluster import KMeans\n\nclass ProcessTableOperator(UDFTableOperator):\n    @overrides\n    def process_table(self, table: Table, port: int) -> Iterator[Optional[TableLike]]:\n        k = int(table[\"K\"].iloc[0])\n        X = table[[\"x\", \"y\"]].to_numpy()\n        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)\n        yield pd.DataFrame([{\"K\": k, \"inertia\": float(km.inertia_)}])\n",
+        "workers": 1,
+        "retainInputColumns": false,
+        "defaultEnv": true,
+        "envName": "",
+        "outputColumns": [
+          { "attributeName": "K", "attributeType": "integer" },
+          { "attributeName": "inertia", "attributeType": "double" }
+        ]
+      },
+      "inputPorts": [
+        { "portID": "input-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false, "dependencies": [] }
+      ],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Cluster with K, report inertia",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false
+    },
+    {
+      "operatorID": "LoopEnd-operator-d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4",
+      "operatorType": "LoopEnd",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "update": "K += 1",
+        "condition": "K <= 6"
+      },
+      "inputPorts": [
+        { "portID": "input-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false, "dependencies": [] }
+      ],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Loop End  (update: K += 1 | condition: K <= 6)",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false,
+      "viewResult": true
+    }
+  ],
+  "operatorPositions": {
+    "PythonUDFSourceV2-operator-a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1": { "x": -220, "y": 120 },
+    "LoopStart-operator-b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2": { "x": 60, "y": 120 },
+    "PythonUDFV2-operator-c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3": { "x": 340, "y": 120 },
+    "LoopEnd-operator-d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4": { "x": 620, "y": 120 }
+  },
+  "links": [
+    {
+      "linkID": "link-bbbbbbbb-0001-4001-8001-000000000001",
+      "source": { "operatorID": "PythonUDFSourceV2-operator-a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1", "portID": "output-0" },
+      "target": { "operatorID": "LoopStart-operator-b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2", "portID": "input-0" }
+    },
+    {
+      "linkID": "link-bbbbbbbb-0002-4002-8002-000000000002",
+      "source": { "operatorID": "LoopStart-operator-b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2", "portID": "output-0" },
+      "target": { "operatorID": "PythonUDFV2-operator-c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3", "portID": "input-0" }
+    },
+    {
+      "linkID": "link-bbbbbbbb-0003-4003-8003-000000000003",
+      "source": { "operatorID": "PythonUDFV2-operator-c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3", "portID": "output-0" },
+      "target": { "operatorID": "LoopEnd-operator-d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4", "portID": "input-0" }
+    }
+  ],
+  "commentBoxes": [],
+  "settings": { "dataTransferBatchSize": 400 }
+}
