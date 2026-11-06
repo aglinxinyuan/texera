@@ -35,11 +35,13 @@ def analyze(root):
     oracle = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(oracle)
     metadata = json.loads((root/'metadata.json').read_text(encoding='utf-8-sig'))
+    expected_cases = set(metadata.get('cases', ['kmeans','files','branching-files']))
+    native = metadata.get('suite') == 'native'
     all_rows, graphs = [], {}
     for fork in range(metadata['forks']):
         folder = root/f'fork-{fork}'
         ops, edge_rows = rows(folder/'operators.csv'), rows(folder/'edges.csv')
-        assert {r['case'] for r in ops} == {'kmeans','files','branching-files'}
+        assert {r['case'] for r in ops} == expected_cases
         current = {}
         for name in sorted({r['case'] for r in ops}):
             selected_ops = sorted((r for r in ops if r['case'] == name), key=lambda r:r['operator'])
@@ -49,20 +51,22 @@ def analyze(root):
             assert current == graphs, 'compiled graphs changed across JVMs'
         graphs = current
         measurements = rows(folder/'results.csv')
-        assert len(measurements) == 3 * 2 * metadata['repetitions']
+        assert len(measurements) == len(expected_cases) * 2 * metadata['repetitions']
         assert all(int(r['fork']) == fork for r in measurements)
         assert len({(r['case'], r['repetition'], r['strategy']) for r in measurements}) == len(measurements)
         all_rows.extend(measurements)
     summary, verification = [], []
     lines = ['# Compiled X/Y planning comparison', '',
-        'Pruning on; 3 strictly compiled saved workflows; alternating X/Y order in each fresh JVM.',
+        f"Pruning on; {len(expected_cases)} strictly compiled {'native-operator' if native else 'saved demo'} workflows; alternating X/Y order in each fresh JVM.",
         f"{metadata['forks']} JVMs, {metadata['warmups']} warm-up pairs and {metadata['repetitions']} measured pairs per workflow per JVM.",
         'Times include Y decomposition and flat-plan reconstruction. Compilation, exhaustive reference search and result validation are excluded.', '',
         '| Workflow | Operators / edges | X median ms | Y median ms | Y/X paired median | Cost X = Y | States X / Y |',
         '|---|---:|---:|---:|---:|---:|---:|']
     for name, (ops, link_rows) in graphs.items():
         weights = {r['operator']:float(r['estimate']) for r in ops}
+        assert len(weights) == len(ops), 'physical stages collapsed into one ID'
         links = [(r['from'],r['to'],r['required']=='true') for r in link_rows]
+        assert all(a in weights and b in weights for a,b,_ in links)
         required = {i for i,e in enumerate(links) if e[2]}
         optional = [i for i in range(len(links)) if i not in required]
         costs = []
@@ -93,19 +97,26 @@ def analyze(root):
                 **{s+'_median_ms':median(int(r['total_ns'])/1e6 for r in measures if r['fork']==str(fork) and r['strategy']==s) for s in ('X','Y')}})
         medians = {s:median(int(r['total_ns'])/1e6 for r in measures if r['strategy']==s) for s in ('X','Y')}
         states = {s:sorted({int(r['search_states']) for r in measures if r['strategy']==s}) for s in ('X','Y')}
-        assert all(len(v)==1 for v in states.values())
+        state_text = {s:(v[0] if len(v)==1 else f'{min(v)}-{max(v)}') for s,v in states.items()}
         winner = 'X' if all(f['paired_y_over_x']>1.1 for f in fork_details) else ('Y' if all(f['paired_y_over_x']<1/1.1 for f in fork_details) else 'close/mixed')
-        result = dict(case=name,operators=len(ops),edges=len(links),x_ms=medians['X'],y_ms=medians['Y'],paired_y_over_x=median(ratios),cost=best,x_states=states['X'][0],y_states=states['Y'][0],winner=winner)
+        result = dict(case=name,operators=len(ops),edges=len(links),x_ms=medians['X'],y_ms=medians['Y'],paired_y_over_x=median(ratios),cost=best,x_states=state_text['X'],y_states=state_text['Y'],winner=winner)
         summary.append(result)
         verification.append(dict(case=name,assignments=1 << len(optional),valid_assignments=len(costs),minimum_cost=best,verified_plans=len(measures),forks=fork_details,
             y_phase_median_ms={k:median(int(r[k])/1e6 for r in measures if r['strategy']=='Y') for k in ('decomposition_ns','search_ns','composition_ns')},
             gc_affected_plans=sum(int(r['gc_count'])>0 for r in measures)))
-        lines.append(f"| {name} | {len(ops)} / {len(links)} | {medians['X']:.4f} | {medians['Y']:.4f} | {median(ratios):.2f} | {best:g} | {states['X'][0]} / {states['Y'][0]} |")
-    lines += ['', '## Interpretation and scope', '',
-        'These small graphs do not give Y a large search space to split. Inspect search-state counts and decomposition/reconstruction costs before generalizing the timing result.',
-        'Cost is the sum of the maximum fixed operator estimate in each region, with every original operator set to 1 and the collapsed macro to 0. These are normalized model costs, not measured runtime or materialized bytes.',
+        lines.append(f"| {name} | {len(ops)} / {len(links)} | {medians['X']:.4f} | {medians['Y']:.4f} | {median(ratios):.2f} | {best:g} | {state_text['X']} / {state_text['Y']} |")
+    graph_scope = ([
+        'Native CSV, filter, aggregate, sort and hash-join descriptors are strictly compiled. The source CSV is real and schemas are inferred; no workflow data processing is timed. Saved logical JSON and physical manifests record the full configured graphs.',
+        'The compiler supplies all internal blocking ports/dependencies: aggregate global-stage outputs, sort outputs and hash-join build outputs. The local aggregate output deliberately remains unmarked as in the code. Only the two external loop-boundary cuts are added by the research adapter.',
+        'No native K-means descriptor exists in this checkout. These are file-summary and summary-join workflows, not a native K-means benchmark. Physical layer names distinguish local/global aggregate and build/probe join stages in the oracle.'
+    ] if native else [
         'The two saved demos use Python UDFs. The file demo has embedded filename/text records, not native Read File or a control-variable port; the branching variant counts words and characters on two branches that merge at LoopEnd.',
-        'Both original demos terminate at LoopEnd. Only the incoming loop boundary is added as a required cut. The compiler marks no UDF output as blocking, including the table-based K-means UDF; no artificial internal blocking edge is added.',
+        'Both original demos terminate at LoopEnd. Only the incoming loop boundary is added as a required cut. The compiler marks no UDF output as blocking, including the table-based K-means UDF; no artificial internal blocking edge is added.'
+    ])
+    lines += ['', '## Interpretation and scope', '',
+        'Inspect the remaining search states and decomposition/reconstruction costs before generalizing the timing result. Physical graph size and real blocking dependencies matter together.',
+        'Cost is the sum of the maximum fixed operator estimate in each region, with every original physical operator set to 1 and the collapsed macro to 0. These are normalized model costs, not measured runtime or materialized bytes.',
+        *graph_scope,
         'Loop operators still carry requiresMaterializedExecution=true. The research harness directly calls PASTA search; the normal main dispatcher forces full materialization. These are planner timings, not a claim that main can execute the returned pipelined loop plans.',
         'Compiled executors, schemas, partition requirements and operator flags are retained in Y, apart from the explicit synthetic zero-cost macro. GUI result-view storage settings are excluded from this topology/fixed-cost comparison.',
         'Each selected plan was checked by the production evaluator and an independent connected-component/Kahn oracle. The oracle enumerates all edge assignments to confirm the minimum.',

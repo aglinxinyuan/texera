@@ -28,6 +28,10 @@ import scala.util.Random
 /** Pruning-on timings after strict compilation; compilation and checks are outside the timers. */
 object CompiledXYBenchmark {
   import XYPlanningComparison._
+  private[scheduling] def operatorKey(
+      id: org.apache.texera.amber.core.virtualidentity.PhysicalOpIdentity
+  ): String =
+    s"${id.logicalOpId.id}/${id.layerName}"
   private def gc: (Long, Long) = {
     val beans = ManagementFactory.getGarbageCollectorMXBeans.asScala
     (
@@ -36,6 +40,19 @@ object CompiledXYBenchmark {
     )
   }
   def main(args: Array[String]): Unit = {
+    run(
+      args,
+      CompiledXYFixtures.files.map {
+        case (name, file) =>
+          (name, file, () => CompiledXYFixtures.compile(CompiledXYFixtures.folder.resolve(file)))
+      }
+    )
+  }
+
+  private[scheduling] def run(
+      args: Array[String],
+      fixtures: Vector[(String, String, () => CompiledXYFixtures.Compiled)]
+  ): Unit = {
     require(args.length == 4, "usage: output-directory repetitions warmups fork")
     val output = Paths.get(args(0))
     val repetitions = args(1).toInt
@@ -89,7 +106,19 @@ object CompiledXYBenchmark {
         "input_schema",
         "output_schema"
       )
-      row(edges, "case", "from", "to", "output_port", "required", "compiler_required")
+      row(
+        edges,
+        "case",
+        "from",
+        "to",
+        "output_port",
+        "required",
+        "compiler_required",
+        "input_port",
+        "output_internal",
+        "input_internal",
+        "compiler_output_blocking"
+      )
       row(
         compilation,
         "case",
@@ -100,9 +129,19 @@ object CompiledXYBenchmark {
         "exhaustive_cost",
         "exhaustive_states"
       )
-      for ((name, file) <- new Random(3001 + fork).shuffle(CompiledXYFixtures.files)) {
-        val compiled = CompiledXYFixtures.compile(CompiledXYFixtures.folder.resolve(file))
+      for ((name, file, compile) <- new Random(3001 + fork).shuffle(fixtures)) {
+        val compiled = compile()
         val input = compiled.input
+        require(
+          input.plan.operators.map(op => operatorKey(op.id)).size == input.plan.operators.size,
+          "physical ID collision"
+        )
+        if (compiled.definition.nonEmpty)
+          Files.writeString(
+            output.resolve(name + ".logical.json"),
+            compiled.definition,
+            StandardCharsets.UTF_8
+          )
         val orderedEdges = input.plan.links.toVector.sortBy(_.toString)
         val reference = searchX(input, pruning = false)
         row(
@@ -115,11 +154,11 @@ object CompiledXYBenchmark {
           reference.cost,
           reference.states
         )
-        input.plan.operators.toVector.sortBy(_.id.logicalOpId.id).foreach { op =>
+        input.plan.operators.toVector.sortBy(op => operatorKey(op.id)).foreach { op =>
           row(
             operators,
             name,
-            op.id.logicalOpId.id,
+            operatorKey(op.id),
             input.block(op.id),
             input.weights(op.id),
             op.opExecInitInfo.getClass.getSimpleName,
@@ -139,11 +178,15 @@ object CompiledXYBenchmark {
           row(
             edges,
             name,
-            l.fromOpId.logicalOpId.id,
-            l.toOpId.logicalOpId.id,
+            operatorKey(l.fromOpId),
+            operatorKey(l.toOpId),
             l.fromPortId.id,
             input.plan.getBlockingAndDependeeLinks(l),
-            compiled.original.getBlockingAndDependeeLinks(l)
+            compiled.original.getBlockingAndDependeeLinks(l),
+            l.toPortId.id,
+            l.fromPortId.internal,
+            l.toPortId.internal,
+            compiled.original.getOperator(l.fromOpId).outputPorts(l.fromPortId)._1.blocking
           )
         }
         for (rep <- -warmups until repetitions) {

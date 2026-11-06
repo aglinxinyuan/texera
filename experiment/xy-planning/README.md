@@ -108,3 +108,24 @@ macro), with cost = sum of region maxima. GUI result-view storage settings are
 excluded. Compilation and validation are outside the timer; Y decomposition
 and reconstruction are inside it. No data processing or pipeline runtime is
 measured, and equal model costs do not imply measured runtime equality.
+
+## Native blocking-port comparison
+
+Run `powershell -File experiment/xy-planning/run-compiled.ps1 -Suite native`.
+The three strict compilations use built-in CSV scan, filter, aggregate, sort
+and hash-join descriptors. The workflow definitions are in `NativeXYFixtures`;
+each run also saves their logical JSON. `native-input.csv` is the local source.
+There is no native K-means descriptor in this checkout.
+
+The cases are grouped totals followed by sorting, totals joined back to rows,
+and separately computed totals/counts joined and sorted. Every loop has one
+entry and exit. Compiler-declared internal blocking ports and dependencies
+are preserved, including aggregate local/global stages and hash-join
+build/probe stages. Only the model's two external loop-boundary cuts are added.
+The local aggregate output is intentionally not marked blocking by the current
+compiler; this experiment does not change it.
+
+The output directory is `target/xy-planning-native/<timestamp>/`. Physical IDs
+include layer names, so oracle checks cannot merge stages of one logical
+operator. All other timing and cost assumptions above still apply. This is
+neither a data-processing runtime test nor a production pipeline change.

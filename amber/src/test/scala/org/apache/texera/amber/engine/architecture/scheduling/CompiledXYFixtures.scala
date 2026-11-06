@@ -45,7 +45,12 @@ object CompiledXYFixtures {
       .find(Files.isDirectory(_))
       .getOrElse(throw new IllegalStateException("fixture folder missing"))
 
-  case class Compiled(input: XYPlanningComparison.Input, original: PhysicalPlan, compileNs: Long)
+  case class Compiled(
+      input: XYPlanningComparison.Input,
+      original: PhysicalPlan,
+      compileNs: Long,
+      definition: String = ""
+  )
 
   def compile(path: Path): Compiled = {
     val begin = System.nanoTime()
