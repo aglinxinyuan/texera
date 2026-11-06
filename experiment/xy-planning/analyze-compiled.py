@@ -72,7 +72,6 @@ def analyze(root):
         links = [(r['from'],r['to'],r['required']=='true') for r in link_rows]
         assert all(a in weights and b in weights for a,b,_ in links)
         required = {i for i,e in enumerate(links) if e[2]}
-        optional = [i for i in range(len(links)) if i not in required]
         if large:
             inside = {r['operator'] for r in ops if r['inside'] == 'true'}
             boundary = {i for i,(a,b,_) in enumerate(links) if (a in inside) != (b in inside)}
@@ -113,8 +112,10 @@ def analyze(root):
             gc_affected_plans=sum(int(r['gc_count'])>0 for r in measures)))
         lines.append(f"| {name} | {len(ops)} / {len(links)} | {medians['X']:.4f} | {medians['Y']:.4f} | {median(ratios):.2f} | {best:g} | {state_text['X']} / {state_text['Y']} |")
     graph_scope = ([
-        'Native CSV, filter, aggregate, sort and hash-join descriptors are strictly compiled. The source CSV is real and schemas are inferred; no workflow data processing is timed. Saved logical JSON and physical manifests record the full configured graphs.',
-        'The compiler supplies all internal blocking ports/dependencies: aggregate global-stage outputs, sort outputs and hash-join build outputs. The local aggregate output deliberately remains unmarked as in the code. Only the two external loop-boundary cuts are added by the research adapter.',
+        ('Native CSV, aggregate, hash-join and sort descriptors are strictly compiled. Each group branches into an aggregate and raw rows, then joins the statistic back to those rows. Groups occur before and inside the loop. The source CSV is real and schemas are inferred; no workflow data processing is timed. Saved logical JSON and physical manifests record the full configured graphs.' if large else
+         'Native CSV, filter, aggregate, sort and hash-join descriptors are strictly compiled. The source CSV is real and schemas are inferred; no workflow data processing is timed. Saved logical JSON and physical manifests record the full configured graphs.'),
+        ('The compiler supplies aggregate global-stage and hash-join build blocking outputs and the join input dependency. The sort is a sink, so its blocking output creates no outgoing cut. The local aggregate output deliberately remains unmarked as in the code. Only the two external loop-boundary cuts are added by the research adapter.' if large else
+         'The compiler supplies all internal blocking ports/dependencies: aggregate global-stage outputs, sort outputs and hash-join build outputs. The local aggregate output deliberately remains unmarked as in the code. Only the two external loop-boundary cuts are added by the research adapter.'),
         'No native K-means descriptor exists in this checkout. These are file-summary and summary-join workflows, not a native K-means benchmark. Physical layer names distinguish local/global aggregate and build/probe join stages in the oracle.'
     ] if native else [
         'The two saved demos use Python UDFs. The file demo has embedded filename/text records, not native Read File or a control-variable port; the branching variant counts words and characters on two branches that merge at LoopEnd.',
