@@ -108,4 +108,3 @@ macro), with cost = sum of region maxima. GUI result-view storage settings are
 excluded. Compilation and validation are outside the timer; Y decomposition
 and reconstruction are inside it. No data processing or pipeline runtime is
 measured, and equal model costs do not imply measured runtime equality.
-
