@@ -41,7 +41,7 @@ try {
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/CompiledXYPlanningSpec.scala',
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/CompiledXYBenchmark.scala',
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/NativeXYFixtures.scala',
-        'amber/src/test/scala/org/apache/texera/amber/engine/architecture.scheduling.NativeXYPlanningSpec.scala',
+        'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/NativeXYPlanningSpec.scala',
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/NativeBranchXYFixtures.scala',
         'amber/src/test/scala/org/apache/texera/amber/engine/architecture/scheduling/NativeBranchXYSpec.scala',
         'experiment/xy-planning/native-input.csv',
