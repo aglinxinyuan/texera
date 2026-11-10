@@ -1,0 +1,82 @@
+LOOP_EXPERIMENT_RESULT n=3 rep=0 seconds=40.327  # from smoke run
+=== n=3 rep=1 start 01:44:46 ===
+LOOP_EXPERIMENT_RESULT n=3 rep=1 seconds=41.822
+=== n=10 rep=1 start 01:45:40 ===
+LOOP_EXPERIMENT_RESULT n=10 rep=1 seconds=128.871
+=== n=30 rep=1 start 01:48:02 ===
+LOOP_EXPERIMENT_RESULT n=30 rep=1 seconds=378.079
+=== n=100 rep=1 start 01:54:33 ===
+LOOP_EXPERIMENT_RESULT n=100 rep=1 seconds=1257.433
+SWEEP DONE 02:15:43
+=== n=3 rep=1 start 04:31:15 ===
+LOOP_EXPERIMENT_RESULT body=trivial n=3 rep=1 seconds=37.747
+=== n=10 rep=1 start 04:32:07 ===
+LOOP_EXPERIMENT_RESULT body=trivial n=10 rep=1 seconds=118.886
+=== n=30 rep=1 start 04:34:17 ===
+LOOP_EXPERIMENT_RESULT body=trivial n=30 rep=1 seconds=351.470
+SWEEP DONE 04:40:20
+=== nested 3x3 start 17:28:25 ===
+[info] - should run the nested 3x3 loop and yield 9 rows *** FAILED ***
+[info] *** 1 TEST FAILED ***
+[error] Failed tests:
+[error] 	org.apache.texera.amber.engine.e2e.LoopOverheadExperimentSpec
+[error] (WorkflowExecutionService / Test / testOnly) sbt.TestsFailedException: Tests unsuccessful
+[error] Total time: 12 s, completed Jul 17, 2026, 5:28:44 PM
+NESTED DONE 17:28:44
+LOOP_EXPERIMENT_NESTED outer=3 inner=3 rows=9 seconds=142.566 (2026-07-17)
+=== IF CASE STUDY (2026-07-17) ===
+ifbase (both branches, alwaysRun): PASSED base_seconds=31.126 base_counts=Map(BT -> 1, BF -> 1)
+if-mode: 6+ runs, semantics validated every run:
+  sentinel = F-open, F-run, T-open (never T-run)
+  IfOpExec: 2 input ports, 239 tuples in, 239 out (all to False port; proves condition-before-data,
+  since IfOpExec defaults to the True port until the condition state arrives)
+  => dependee ordering held; only taken branch worked; untaken branch deployed but idle
+Completion blocked (no clean if_seconds): pyamber empty-channel deadlock -- main_loop vs
+data_processor condition-variable parity; DP parked at data_processor.py:79, main at
+interruptible_get (py-spy verified, PID dump 2026-07-17 20:31). Region order varies; empty branch
+sometimes runs first and blocks everything. Termination race ("worker still has unprocessed
+messages") is a separate, recoverable engine race (terminateWorkersWithRetry rescues).
+Paper: 6.3 blue prose (semantics), timing left as todo for Linux + deadlock fix.
+=== IF CASE STUDY, POST-FIX (2026-07-18) ===
+pyamber fixes on loop-feb (uncommitted): (1) marker_ready gate + finished_current discipline
+(main_loop.py/data_processor.py/tuple_processing_manager.py) kills the empty-channel deadlock;
+(2) context.py worker state graph: READY -> COMPLETED allowed (mirrors WorkerStateManager.scala;
+zero-tuple worker never transits to RUNNING). New unit test: test_state_manager.py
+test_worker_context_allows_ready_to_completed. All 11 pyamber tests in the two touched files pass.
+if-mode:   PASSED if_seconds=25.465 if_counts=Map(T -> 0, F -> 1) sentinel=T-open,F-open,F-run
+           (empty True branch scheduled FIRST and completed -- previously the fatal order)
+ifbase:    PASSED base_seconds=31.338 base_counts=Map(BT -> 1, BF -> 1) (fixed engine; 31.126 pre-fix)
+Delta: 25.5 s vs 31.3 s = If pays for one 10 s model instead of two, minus cond+If region overhead.
+
+=== IF CASE STUDY, ON APACHE/MAIN (2026-07-18, commit 29656a4eff; loop #5700 @ 1a2e2bc491) ===
+Harness adapted to main API (Controller->Coordinator, pekkoConfig, TestUtils(id),
+registerResultUriPersistence, @IntegrationTest tag). Catalog: STORAGE_ICEBERG_CATALOG_TYPE=postgres
+(main defaults to rest/:8181). No engine patch needed -- main already has the empty-channel
+deadlock fix + READY->COMPLETED transition.
+ifbase: base_seconds=31.382 base_counts=Map(BT -> 1, BF -> 1) sentinel=BF-open,BF-run,BT-open,BT-run
+if:     if_seconds=25.732  if_counts=Map(T -> 0, F -> 1)   sentinel=F-open,F-run,T-open
+        (ATTEMPT 1 SUCCESS -- no retries; loop-feb needed ~5 due to the deadlock now fixed in main)
+Delta 25.7 vs 31.4 s: If runs one 10s model, not two, minus cond+If region overhead.
+
+=== RERUN ON apache/main (2026-07-18, post-merge, commit 29656a4eff) ===
+Config: STORAGE_ICEBERG_CATALOG_TYPE=postgres (main defaults to REST), 2 pyamber Windows shims.
+NOTE: main HANDLES the empty untaken branch -- context.py commits READY->COMPLETED (line 48, with
+comment); main_loop.py does NOT carry the loop-feb marker_ready gate and did not need it (If passed
+first try on main). Earlier "If needed retries on main" note was WRONG -- those failures were config
+(harness API + REST-vs-postgres catalog), not the runtime deadlock. Sweep/nested have no empty
+channels regardless.
+NESTED 3x3:  9 rows / 144.479 s   (loop-feb: 9 / 142.6 s)  -- reset semantics reproduce
+KNN sweep:   n=3   48.024 s
+             n=10  142.939 s
+             n=30  419.325 s
+             n=100 1374.035 s
+  fit: t = 13.671 n + 7.326   R^2 = 1.00000   per-iter = 13.67 s
+  vs loop-feb: t = 12.537 n + 3.351, per-iter 12.54 s  => main +9.0% (merge preserved behavior)
+  overhead vs 3 ms script ~= 4,500x for this body.
+
+=== IF ROBUSTNESS on apache/main (2026-07-18, 8 runs) ===
+8/8 PASS, 0 hang. Region order (empty untaken-branch first vs taken-first)
+split 4/4 -- BOTH orders complete cleanly => main is genuinely immune to the
+loop-feb parity deadlock (not lucky on one run). Confirms paper's "no engine
+patch needed on main". if_seconds: 25.979 25.748 25.392 25.627 25.802 25.568
+26.576 25.701 (mean 25.80, sd ~0.35); all Map(T->0, F->1). Paper commit 3bfa676.

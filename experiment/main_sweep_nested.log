@@ -1,0 +1,13 @@
+##### NESTED 3x3 #####
+=== nested start 18:31:47 ===
+nested exit=0 :: LOOP_EXPERIMENT_NESTED outer=3 inner=3 rows=9 seconds=144.479 [info] Tests: succeeded 1, failed 0, canceled 3, ignored 0, pending 0 
+##### KNN OVERHEAD SWEEP (n=3,10,30,100) #####
+=== knn_n3 start 18:34:28 ===
+knn_n3 exit=0 :: LOOP_EXPERIMENT_RESULT body=knn n=3 rep=1 seconds=48.024 [info] Tests: succeeded 1, failed 0, canceled 3, ignored 0, pending 0 
+=== knn_n10 start 18:35:32 ===
+knn_n10 exit=0 :: LOOP_EXPERIMENT_RESULT body=knn n=10 rep=1 seconds=142.939 [info] Tests: succeeded 1, failed 0, canceled 3, ignored 0, pending 0 
+=== knn_n30 start 18:38:12 ===
+knn_n30 exit=0 :: LOOP_EXPERIMENT_RESULT body=knn n=30 rep=1 seconds=419.325 [info] Tests: succeeded 1, failed 0, canceled 3, ignored 0, pending 0 
+=== knn_n100 start 18:45:28 ===
+knn_n100 exit=0 :: LOOP_EXPERIMENT_RESULT body=knn n=100 rep=1 seconds=1374.035 [info] Tests: succeeded 1, failed 0, canceled 3, ignored 0, pending 0 
+MAIN SWEEP+NESTED DONE 19:08:38

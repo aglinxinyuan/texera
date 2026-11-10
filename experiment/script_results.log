@@ -1,0 +1,6 @@
+SCRIPT_RESULT n=3 seconds=0.011 per_iter_ms=3.56 acc=0.833
+SCRIPT_RESULT n=10 seconds=0.029 per_iter_ms=2.94 acc=0.833
+SCRIPT_RESULT n=30 seconds=0.088 per_iter_ms=2.94 acc=0.833
+SCRIPT_RESULT n=100 seconds=0.292 per_iter_ms=2.92 acc=0.833
+SCRIPT_RESULT n=1000 seconds=3.336 per_iter_ms=3.34 acc=0.833
+SCRIPT_RESULT n=10000 seconds=37.833 per_iter_ms=3.78 acc=0.833
