@@ -1,0 +1,14 @@
+{
+  "demo1_kmeans_choose_k.json": {
+    "source": "C:\\Users\\linxi\\IdeaProjects\\texera\\experiment\\demos\\demo1_kmeans_choose_k.json",
+    "sha256": "e46b9202a763946d060caf85affbd955d63a1ba1c2de401dd17e366fc6d3e09f"
+  },
+  "demo2_per_file_counts.json": {
+    "source": "C:\\Users\\linxi\\IdeaProjects\\texera\\experiment\\demos\\demo2_per_file_counts.json",
+    "sha256": "3e748775f811a93e5af9a2f84d8177afe30d9db7892765378a43590d141a44e0"
+  },
+  "demo3_branching_file_metrics.json": {
+    "derived_from": "demo2_per_file_counts.json",
+    "changes": "Two tuple UDFs count words and characters; identical filename/metric/value schemas merge at LoopEnd; no added blocking flags."
+  }
+}

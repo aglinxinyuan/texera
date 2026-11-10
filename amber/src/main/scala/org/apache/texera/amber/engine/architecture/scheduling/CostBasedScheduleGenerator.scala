@@ -24,6 +24,7 @@ import org.apache.texera.amber.core.storage.VFSURIFactory.createPortBaseURI
 import org.apache.texera.amber.core.virtualidentity.{ActorVirtualIdentity, PhysicalOpIdentity}
 import org.apache.texera.amber.core.workflow._
 import org.apache.texera.amber.engine.architecture.scheduling.SchedulingUtils.replaceVertex
+import org.apache.texera.amber.engine.architecture.scheduling.resourcePolicies.ResourceAllocator
 import org.apache.texera.amber.engine.architecture.scheduling.config.{
   IntermediateInputPortConfig,
   OutputPortConfig,
@@ -64,7 +65,8 @@ object CostBasedScheduleGenerator {
 class CostBasedScheduleGenerator(
     workflowContext: WorkflowContext,
     initialPhysicalPlan: PhysicalPlan,
-    val actorId: ActorVirtualIdentity
+    val actorId: ActorVirtualIdentity,
+    costEstimatorFactory: Option[ResourceAllocator => CostEstimator] = None
 ) extends ScheduleGenerator(
       workflowContext,
       initialPhysicalPlan
@@ -79,11 +81,14 @@ class CostBasedScheduleGenerator(
       numStatesExplored: Int = 0
   )
 
-  private val costEstimator =
-    new DefaultCostEstimator(
-      workflowContext = workflowContext,
-      resourceAllocator = resourceAllocator,
-      actorId = actorId
+  private val costEstimator = costEstimatorFactory
+    .map(_(resourceAllocator))
+    .getOrElse(
+      new DefaultCostEstimator(
+        workflowContext = workflowContext,
+        resourceAllocator = resourceAllocator,
+        actorId = actorId
+      )
     )
 
   private case class CostEstimatorMemoKey(
@@ -536,6 +541,18 @@ class CostBasedScheduleGenerator(
       searchTimeNanoSeconds = System.nanoTime() - startTime,
       numStatesExplored = 1
     )
+  }
+
+  /** Evaluate a supplied assignment, including resource allocation, without searching again. */
+  private[scheduling] def evaluateMaterialization(
+      matEdges: Set[PhysicalLink]
+  ): Option[SearchResult] = {
+    require(matEdges.subsetOf(physicalPlan.links), "unknown materialized edge")
+    require(physicalPlan.getBlockingAndDependeeLinks.subsetOf(matEdges), "missing required cut")
+    tryConnectRegionDAG(matEdges).left.toOption.map { dag =>
+      val cost = allocateResourcesAndEvaluateCost(dag)
+      SearchResult(matEdges.diff(physicalPlan.getBlockingAndDependeeLinks), dag, cost)
+    }
   }
 
   /**

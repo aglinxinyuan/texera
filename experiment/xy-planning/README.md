@@ -1,0 +1,199 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+# Small X/Y planning comparison
+
+Run from this worktree in PowerShell:
+
+```powershell
+./experiment/xy-planning/run.ps1
+```
+
+The default performs two warm-up pairs and five measured pairs for each of four workflows, with pruning off and on. It first runs the correctness tests. Raw timings, source hashes, revision, environment and the build log go under `target/xy-planning/`. Java17, sbt and Git Bash must be installed. A fresh checkout also needs the usual Texera jOOQ database for compilation; the pilot does not query recorded workflow statistics or run workers.
+
+For a quick smoke run: `./experiment/xy-planning/run.ps1 -Repetitions 1 -Warmups 0`.
+
+On other platforms, use Java17 and the two sbt commands in `run.ps1`; the Scala main accepts `[output.csv] [repetitions] [warmups]`.
+
+## Question
+
+Does decomposing one loop into two searches reduce complete planning time while retaining the minimum estimated cost? The pilot measures the actual PASTA search code with a small research adapter for Y. It does not measure workflow execution time.
+
+## Workflow family
+
+```text
+             sealed block
+             +------------------------------+
+s0 -> ... -> so | LS -> b1 -> ... -> LE | -> sink
+ |           +---------|--------------^-----+     ^
+ |                     +---- stored --+           |
+ +-----------------------------------------------+
+```
+
+The two block boundary edges are stored. `b1` has a streaming output on the chain and a blocking output directly to `LE`. The outer bypass is `s0 -> sink`. These two branches create unschedulable region assignments; the example is more than two independent chains.
+
+The four `(block selectable edges, outer selectable edges)` pairs are `(3,2)`, `(3,4)`, `(5,2)` and `(5,4)`. LoopStart/LoopEnd here are graph roles on synthetic physical operators. No loop code or data processing runs. The harness enforces the paper's two boundary cuts directly, so the deployed loop-mode coercion is outside this measurement.
+
+## What runs
+
+- **X:** PASTA `bottomUpSearch(globalSearch=true)` on the whole physical DAG.
+- **Y:** extract the block, collapse it into a macro in the outer DAG, invoke the same search separately, map selected cuts back to original edges, then rebuild and allocate the flat region plan using PASTA's normal region construction and cost evaluation.
+- **Cost:** fixed positive synthetic operator-time estimates; each region costs its maximum operator estimate, and the plan sums region costs. This is the statistics-based estimator's formula with reproducible supplied estimates. The isolated macro has zero cost to avoid counting the block twice. Resource allocation, storage URI construction, memoization and schedulability checks still use engine code. The port-count estimator is outside this pilot.
+- **Pruning:** both strategies use either all three bottom-up optimizations or none. Exhaustive runs establish the reference minimum. Every measured pair must return equal costs and independently pass full-plan schedulability/cost verification.
+- **Timing:** outer wall-clock timers include planner construction and cost evaluation. Y also includes validation, decomposition and final flat-plan reconstruction/allocation. Common fixture creation, sbt startup, Scala compilation and independent post-run verification are outside the timed interval. New planner instances give each search a fresh memo table. X/Y order alternates per repetition; warm-ups are excluded. JIT compilation and garbage collection can still affect measured samples.
+
+`search_states` counts states visited inside the searches. Y's additional composition validation is included in `composition_ns` and `total_ns`, but not in that counter. The executable throws on invalid blocks, missing cuts, a cyclic composed plan or a cost mismatch.
+
+## Limits and next measurement
+
+This is a runnable one-block pilot, not a production Y integration or submission-ready benchmark. It uses fixed estimates and four small graph shapes; it does not establish a general speedup, model loop iterations, or measure nested loops. A zero-valued isolated macro is valid for the additive objective only. Compare complete times and estimated costs, not just assignment counts. Repeat in fresh JVMs before interpreting small timing differences; preserve raw samples and report both pruning modes.
+
+The source change adds only estimator injection (the default is unchanged) and a package-visible evaluator for a supplied materialization assignment. Main/prototype checkouts and the paper remain unchanged. All work is local to `codex/xy-planning-pilot`.
+
+## Larger and varied sweep
+
+```powershell
+./experiment/xy-planning/run-extended.ps1
+```
+
+This runs 16 topologies with two cost profiles: chains, a chain with a blocking shortcut, serial diamonds, and fan-out/merge graphs. Each family has increasing sizes; extra chain/shortcut cases put most selectable edges inside or outside the block. The largest cases have 13 selectable edges (8,192 assignments without pruning). The single-block contract and the real PASTA search/composition path are unchanged.
+
+The `uniform` profile assigns 1 to every operator. The `skewed` profile uses seeded draws from {1,2,4,16}; the weights are identical for both strategies and pruning modes on each graph. All operators and edges, including required cuts and weights, are saved as CSV. These are generated graphs, not application workloads.
+
+Defaults: three fresh JVMs, one warm-up pair and three measured pairs per graph/profile/pruning mode/JVM, for 1,152 measured plans. Scenario and pruning-mode order are shuffled deterministically per JVM; strategy order alternates. Full-plan checks require all four strategy/pruning combinations to have the same minimum cost. All samples stay in the report, including GC-affected samples. Increase `-Repetitions` and `-Warmups` for a longer run.
+
+Results go into a new timestamped directory under `target/xy-planning-extended/`. It contains metadata, per-JVM logs/raw samples/fixtures, `summary.csv`, `REPORT.md`, and PNG/PDF/SVG plots. Python with matplotlib is needed for the report (override `-Python` on other installations). Rebuild a report with `python -I experiment/xy-planning/analyze.py <result-directory>`.
+
+After timing, `oracle.py` independently enumerates the saved graphs using connected components and cycle detection, and checks their minimum costs against every measurement. It does not call the Scala planner. Re-run it with `python -I experiment/xy-planning/oracle.py <result-directory>`; results are saved in `oracle.json`.
+
+The report calls X or Y a repeatable winner only when it has at least a 10% paired-median advantage in every JVM; otherwise it says close/mixed. The plotted bars span per-JVM medians, not confidence intervals. This does not turn synthetic planning measurements into a workflow-runtime or general-speedup claim.
+# Compiled workflow comparison
+
+Run `powershell -File experiment/xy-planning/run-compiled.ps1` from this worktree.
+The default is 3 fresh JVMs, 20 warm-up pairs and 100 measured pairs per graph,
+with production pruning enabled and alternating X/Y order. Output is under
+`target/xy-planning-compiled/<timestamp>/`; `analyze-compiled.py` verifies the
+saved selected cuts independently and writes `REPORT.md` and `summary.csv`.
+
+`workflows/` holds byte copies of the existing K-means and file-processing GUI
+demos and a derived word/character-count branching variant; `provenance.json`
+records their sources. Strict compilation preserves actual UDF executors,
+schemas, port definitions and partition requirements. The file demo uses
+embedded text records rather than native Read File or a control-variable port.
+Both demos terminate at LoopEnd. The adapter adds the model's incoming loop
+boundary cut; it adds no internal blocking edges. The compiled table UDF in the
+K-means demo has a nonblocking output declaration.
+
+This is a planning experiment, not workflow execution: main still dispatches
+loops to fully materialized scheduling. The harness directly invokes PASTA's
+search, and Y is a research implementation that decomposes and reconstructs the
+plan. Both use the same fixed estimates (1 per original operator, 0 for Y's
+macro), with cost = sum of region maxima. GUI result-view storage settings are
+excluded. Compilation and validation are outside the timer; Y decomposition
+and reconstruction are inside it. No data processing or pipeline runtime is
+measured, and equal model costs do not imply measured runtime equality.
+
+## Native blocking-port comparison
+
+Run `powershell -File experiment/xy-planning/run-compiled.ps1 -Suite native`.
+The three strict compilations use built-in CSV scan, filter, aggregate, sort
+and hash-join descriptors. The workflow definitions are in `NativeXYFixtures`;
+each run also saves their logical JSON. `native-input.csv` is the local source.
+There is no native K-means descriptor in this checkout.
+
+The cases are grouped totals followed by sorting, totals joined back to rows,
+and separately computed totals/counts joined and sorted. Every loop has one
+entry and exit. Compiler-declared internal blocking ports and dependencies
+are preserved, including aggregate local/global stages and hash-join
+build/probe stages. Only the model's two external loop-boundary cuts are added.
+The local aggregate output is intentionally not marked blocking by the current
+compiler; this experiment does not change it.
+
+The output directory is `target/xy-planning-native/<timestamp>/`. Physical IDs
+include layer names, so oracle checks cannot merge stages of one logical
+operator. All other timing and cost assumptions above still apply. This is
+neither a data-processing runtime test nor a production pipeline change.
+
+## Larger native branches inside and outside the loop
+
+Run `powershell -File experiment/xy-planning/run-compiled.ps1 -Suite native-large`.
+Six predeclared cases use 1/1, 2/2, 3/3, 4/4, 1/4 and 4/1 enrichment groups
+inside/outside the loop (12-36 physical operators). Each group branches into
+an aggregate and a raw-row path, then joins the per-file statistic back to
+those rows. Successive groups compute sum, count, minimum and maximum.
+Outside groups precede LoopStart; inside groups follow it. LoopEnd feeds a
+native sort. LoopStart selects rows with value >= i for i = 0, 1, 2.
+
+All descriptors compile strictly with actual schemas and blocking dependencies.
+Each group expands to local/global aggregation and build/probe join stages.
+The same timing protocol and fixed-cost model apply. Pruning stays on in all
+timed searches. Outputs are in `target/xy-planning-native-large/<timestamp>/`.
+
+For up to 8 optional edges, an untimed Scala search without pruning also
+checks the reference cost. Larger cases leave the exhaustive-reference columns
+blank; they do not silently run a prohibitively large whole-graph search.
+The independent Python checker enumerates both sealed modules exactly and
+validates their composed minimum on the full graph. It preserves the
+zero-weight macro's boundary arcs, checks the single-entry/single-exit path
+conditions and mandatory boundary cuts, and also cross-checks by full-graph
+enumeration at up to 14 optional edges. The largest case has 25 optional
+edges: 8,192 inner plus 4,096 outer assignments, rather than 33,554,432 full
+assignments. This proof applies to these sealed graphs and the additive region
+cost; it does not assert equivalence for arbitrary graphs or cost models.
+
+Run `python -I experiment/xy-planning/test_module_oracle.py` for small weighted
+branch/bypass cross-checks and rejection tests for invalid boundaries and cycles.
+All physical manifests, selected cut sets, exact minima, assignment counts and
+per-JVM samples are saved; no cases or GC samples are dropped.
+
+## Aggregation-heavy and join-heavy estimates
+
+Run the same six graphs with two predeclared 8:1 sensitivity profiles:
+
+```powershell
+./experiment/xy-planning/run-compiled.ps1 -Suite native-weighted -UniformReference target/xy-planning-native-large/20261105-191504
+```
+
+`-UniformReference` must point to the saved native-large run (the worklog's
+archived data directory also works). Aggregation-heavy gives both local/global
+aggregate stages weight8; join-heavy gives both build/probe stages weight8.
+All other physical operators remain1 and Y's macro remains0. These are fixed
+hypothetical estimates, not measured operator times. Both strategies receive
+the identical map. The graphs, source data, primitive code and blocking ports
+are unchanged. The analyzer compares logical JSON and every physical manifest
+field except the estimates/case names against the reference run, and checks
+the exact declared weights independently of the Scala layer-based assignment.
+
+The default protocol is unchanged: three JVMs,20 warm-up pairs and100 measured
+pairs per graph/profile/JVM (7200 plans), pruning on throughout. Complete Y
+decomposition and reconstruction remain timed. The same independent exact
+module oracle verifies all12 minima and all returned plans, with whole-graph
+cross-checks on the smallest two sizes in each profile. Output is under
+`target/xy-planning-native-weighted/<timestamp>/`. The saved uniform reference
+files and source files are SHA256-pinned throughout the run. No workflow
+execution, production scheduling change or manuscript edit is involved.
+
+## A cost profile that changes the selected plan
+
+Run `./experiment/xy-planning/run-cost-choice.ps1` for a small native correctness
+case with six body operators and the same two 8:1 profiles. Plan A costs13/34
+under aggregation-heavy/join-heavy estimates; plan B costs14/28. Both planners
+choose the unique minimum with pruning on, checked against all512 assignments
+per profile. See [COST-CHOICE.md](COST-CHOICE.md) for the graph, exact cuts,
+selection procedure and limitations. This short run makes no timing claim.

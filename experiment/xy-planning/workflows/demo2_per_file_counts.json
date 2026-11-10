@@ -1,0 +1,121 @@
+{
+  "operators": [
+    {
+      "operatorID": "PythonUDFSourceV2-operator-11111111-1111-4111-8111-111111111111",
+      "operatorType": "PythonUDFSourceV2",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "code": "from pytexera import *\nimport pandas as pd\n\nclass GenerateOperator(UDFSourceOperator):\n    @overrides\n    def produce(self) -> Iterator[Union[TupleLike, TableLike, None]]:\n        files = [\n            {\"filename\": \"a.txt\", \"text\": \"the quick brown fox\"},\n            {\"filename\": \"b.txt\", \"text\": \"lorem ipsum dolor sit amet consectetur\"},\n            {\"filename\": \"c.txt\", \"text\": \"hello world\"},\n            {\"filename\": \"d.txt\", \"text\": \"one two three four five six\"},\n        ]\n        yield pd.DataFrame(files)\n",
+        "workers": 1,
+        "defaultEnv": true,
+        "envName": "",
+        "columns": [
+          { "attributeName": "filename", "attributeType": "string" },
+          { "attributeName": "text", "attributeType": "string" }
+        ]
+      },
+      "inputPorts": [],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "List files (filename + text)",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false,
+      "viewResult": true
+    },
+    {
+      "operatorID": "LoopStart-operator-22222222-2222-4222-8222-222222222222",
+      "operatorType": "LoopStart",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "initialization": "i = 0",
+        "output": "table.iloc[[i]]"
+      },
+      "inputPorts": [
+        { "portID": "input-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false, "dependencies": [] }
+      ],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Loop Start  (init: i = 0 | output: table.iloc[[i]])",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false
+    },
+    {
+      "operatorID": "PythonUDFV2-operator-33333333-3333-4333-8333-333333333333",
+      "operatorType": "PythonUDFV2",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "code": "from pytexera import *\n\nclass ProcessTupleOperator(UDFOperatorV2):\n    @overrides\n    def process_tuple(self, tuple_: Tuple, port: int) -> Iterator[Optional[TupleLike]]:\n        tuple_[\"word_count\"] = len(str(tuple_[\"text\"]).split())\n        yield tuple_\n",
+        "workers": 1,
+        "retainInputColumns": true,
+        "defaultEnv": true,
+        "envName": "",
+        "outputColumns": [
+          { "attributeName": "word_count", "attributeType": "integer" }
+        ]
+      },
+      "inputPorts": [
+        { "portID": "input-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false, "dependencies": [] }
+      ],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Count words in this file",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false
+    },
+    {
+      "operatorID": "LoopEnd-operator-44444444-4444-4444-8444-444444444444",
+      "operatorType": "LoopEnd",
+      "operatorVersion": "N/A",
+      "operatorProperties": {
+        "update": "i += 1",
+        "condition": "i < len(table)"
+      },
+      "inputPorts": [
+        { "portID": "input-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false, "dependencies": [] }
+      ],
+      "outputPorts": [
+        { "portID": "output-0", "displayName": "", "allowMultiInputs": false, "isDynamicPort": false }
+      ],
+      "showAdvanced": false,
+      "isDisabled": false,
+      "customDisplayName": "Loop End  (update: i += 1 | condition: i < len(table))",
+      "dynamicInputPorts": false,
+      "dynamicOutputPorts": false,
+      "viewResult": true
+    }
+  ],
+  "operatorPositions": {
+    "PythonUDFSourceV2-operator-11111111-1111-4111-8111-111111111111": { "x": -220, "y": 120 },
+    "LoopStart-operator-22222222-2222-4222-8222-222222222222": { "x": 60, "y": 120 },
+    "PythonUDFV2-operator-33333333-3333-4333-8333-333333333333": { "x": 340, "y": 120 },
+    "LoopEnd-operator-44444444-4444-4444-8444-444444444444": { "x": 620, "y": 120 }
+  },
+  "links": [
+    {
+      "linkID": "link-aaaaaaaa-0001-4001-8001-000000000001",
+      "source": { "operatorID": "PythonUDFSourceV2-operator-11111111-1111-4111-8111-111111111111", "portID": "output-0" },
+      "target": { "operatorID": "LoopStart-operator-22222222-2222-4222-8222-222222222222", "portID": "input-0" }
+    },
+    {
+      "linkID": "link-aaaaaaaa-0002-4002-8002-000000000002",
+      "source": { "operatorID": "LoopStart-operator-22222222-2222-4222-8222-222222222222", "portID": "output-0" },
+      "target": { "operatorID": "PythonUDFV2-operator-33333333-3333-4333-8333-333333333333", "portID": "input-0" }
+    },
+    {
+      "linkID": "link-aaaaaaaa-0003-4003-8003-000000000003",
+      "source": { "operatorID": "PythonUDFV2-operator-33333333-3333-4333-8333-333333333333", "portID": "output-0" },
+      "target": { "operatorID": "LoopEnd-operator-44444444-4444-4444-8444-444444444444", "portID": "input-0" }
+    }
+  ],
+  "commentBoxes": [],
+  "settings": { "dataTransferBatchSize": 400 }
+}
